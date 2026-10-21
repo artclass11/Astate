@@ -5,7 +5,7 @@ const appPath = require('node:path').join(__dirname, '..', 'assets', 'app.js');
 let source = fs.readFileSync(appPath, 'utf8');
 const marker = "  document.addEventListener('DOMContentLoaded', () => {";
 assert(source.includes(marker), 'test hook marker not found');
-source = source.replace(marker, "  window.__ASTATE_TEST_API = { validateRealEstateMessage, inferType, detectIntent, queryProfile, scoreMatch };\n" + marker);
+source = source.replace(marker, "  window.__ASTATE_TEST_API = { validateRealEstateMessage, validateRealEstateRecord, redactPublicContacts, inferType, detectIntent, queryProfile, scoreMatch };\n" + marker);
 const window = { ASTATE_CONFIG: {} };
 const document = { addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, body: { dataset: { page: '' } } };
 vm.runInNewContext(source, { window, document, console, URL, Blob, setTimeout, clearTimeout });
@@ -33,8 +33,27 @@ const invalid = text => assert.equal(api.validateRealEstateMessage(text).ok, fal
   'Selling 100 mobile phones for ₹5 lakh.'
 ].forEach(invalid);
 
-assert.equal(api.inferType('Selling 2 acres near Sinnar'), 'Agricultural land');
+assert.equal(api.inferType('Selling 2 acres near Sinnar'), 'Plot / land', 'acreage alone should infer land without assuming agricultural use');
 assert.equal(api.detectIntent('Cafe premises available for rent in Sangli'), 'SELL');
+
+const redacted = api.redactPublicContacts('Selling a flat in Pune. Call 9876543210, email owner@example.com, more details https://example.com/property');
+assert(!redacted.includes('9876543210'), 'phone numbers must be redacted from public text');
+assert(!redacted.includes('owner@example.com'), 'email addresses must be redacted from public text');
+assert(!redacted.includes('https://example.com/property'), 'URLs must be redacted from public text');
+assert(redacted.includes('[phone hidden]') && redacted.includes('[email hidden]'), 'redaction should be visible rather than silently deleting context');
+
+assert.equal(api.validateRealEstateRecord({
+  listingType: 'SELL',
+  title: 'PROPERTY OFFER: Hotel / resort in Nashik',
+  propertyType: 'Hotel / resort',
+  description: 'Selling a hotel building with 18 rooms near Nashik'
+}), true, 'real-estate asset types beyond land/houses must be accepted');
+assert.equal(api.validateRealEstateRecord({
+  listingType: 'SELL',
+  title: 'Pharma products',
+  propertyType: 'Medicine',
+  description: 'Selling pharmaceutical products in Nashik'
+}), false, 'read-side filters must reject unrelated product records');
 
 const offers = [
   { publicId: 'GOOD', listingType: 'SELL', propertyType: 'Agricultural land', landUse: 'Agricultural', city: 'Nashik', locality: 'Sinnar', state: 'Maharashtra', areaValue: 2, areaUnit: 'acre', priceINR: 6500000, description: 'Agricultural land near Sinnar with road access and well water' },
