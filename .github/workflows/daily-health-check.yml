@@ -34,6 +34,8 @@ jobs:
         run: npm run check
       - name: Run regression tests
         run: npm test
+      - name: Smoke-test public JSON/CSV backup export
+        run: npm run backup:public
       - name: Check public website and gateway
         run: node scripts/site-health-check.mjs
       - name: Open or update incident issue when a check fails
