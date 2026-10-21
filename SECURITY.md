@@ -1,25 +1,27 @@
 # Security Policy
 
 ## Reporting
-
 Report suspected vulnerabilities privately to **artclassstudio11@gmail.com**. Do not post exploit details, personal information, or unredacted listing data in public issues.
 
-## Public-data model
+## Current architecture
+- Public property reads are served by a read-only allowlisted endpoint.
+- Anonymous submissions go through the server-side Supabase Edge Function `property-gateway`; the browser does not receive server database credentials.
+- Database writes are performed by a restricted database function. Public roles can read published property fields but cannot insert, update, or delete rows directly.
+- Raw submitted text and keyed IP fingerprints are stored in a private schema that is not exposed through the public Data API.
+- The gateway enforces real-estate-only rules, limits text length, redacts common contact patterns, rejects duplicates, and limits each fingerprint to five attempts per 15-minute window.
+- GitHub Actions runs source tests and daily public-site/gateway health checks; failures raise or update an incident issue.
 
-Astate is a public real-estate lead directory. Anything successfully published to the public listing collection may be indexed, copied, cached, or redistributed by third parties. Public listing descriptions are pattern-redacted for common phone numbers, email addresses, and URLs, but pattern redaction is not a privacy guarantee. Contributors should not submit identity documents, bank details, signatures, or sensitive personal data.
+## Public-data model and residual risk
+Astate is a public real-estate lead directory. Published property facts may be indexed, copied, cached, or redistributed by third parties. Pattern-based contact redaction is not a privacy guarantee. Contributors should not submit identity documents, bank details, signatures, or sensitive personal information.
 
-The anonymous visitor OAuth client ID in frontend code is a public identifier, not a secret. Never add Wix API secrets, refresh tokens, SMTP credentials, Supabase service-role keys, or other privileged credentials to frontend assets or this public repository.
+The frontend's Supabase publishable key is intended for public use. Never add Supabase secret/service-role credentials, Wix API secrets, refresh tokens, SMTP credentials, or other privileged credentials to frontend assets, logs, public issues, or this repository.
 
-## Current security boundary
-
-The public frontend now filters public-feed records to real-estate categories, redacts common contact patterns in cards/exports, and bounds browser data requests with timeouts. The MCP server applies its own read-side filtering/redaction and timeout behavior.
-
-**Important limitation:** this site still uses a public Wix CMS collection with anonymous insert permission so visitors can post without accounts. Client-side checks can be bypassed by callers that invoke the Wix Data API directly. Read-side filtering reduces what Astate displays but does not prevent invalid records from being written to Wix. A server-side posting gateway, server-side validation, abuse/rate limiting, and moderation/removal controls are still required before the write path should be considered enterprise-secure.
+No internet-facing system can be guaranteed unhackable. The controls above reduce common exposure and abuse paths but do not replace ongoing patching, backups, alerts, secret rotation, human review of incidents, or independent security testing. The current IP-based limit depends on the source IP metadata provided by the edge platform; it is a mitigation, not a full anti-bot service. Automated daily checks report failures but do not silently change production code.
 
 ## Response process
-
 1. Preserve timestamps and public reference IDs; do not copy personal details into public issue threads.
-2. Disable or restrict the public insert permission if active abuse is detected.
-3. Remove the public record through an authorized CMS editor; do not let anonymous users update or remove records.
-4. Rotate any accidentally exposed privileged credentials, and inspect Git history and Actions logs.
-5. Publish a short incident note after remediation, without disclosing affected people's personal data.
+2. Review the latest GitHub Actions run, edge-function logs, and Supabase security advisors.
+3. Disable or restrict the posting gateway if active abuse is detected; do not expose admin credentials in a public issue.
+4. Remove a public record through an authorized admin path; never let anonymous users update or remove records.
+5. Rotate any accidentally exposed privileged credentials and inspect Git history and Actions logs.
+6. Publish a short incident note after remediation without exposing affected people's personal data.
