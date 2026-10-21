@@ -3,56 +3,61 @@
 ## Current architecture
 
 - **Frontend:** static HTML/CSS/JavaScript hosted on Wix Headless.
-- **Primary database:** Wix CMS `propertyListings` is the public lead feed; `propertyIntakes` is intended for restricted raw submissions/backup copies.
-- **Repository:** [artclass11/Astate](https://github.com/artclass11/Astate) stores public source and tests. It is not the database and should not contain private submissions.
-- **Local AI connector:** `mcp-server.mjs` provides read-only stdio MCP tools for public listings. It does not write properties and is not a hosted remote MCP endpoint.
-- **Public search feed:** `/listings.html`, `/ai-data.html`, `/llms.txt`, `/robots.txt`, and the Wix sitemap describe the public site to humans, crawlers, and compatible AI agents.
-- **Local data export:** Explore and AI data pages export public listings as JSON or CSV. This is a local download initiated by the visitor.
+- **Public write gateway:** Supabase Edge Function `property-gateway`; no-login visitors can submit plain-text property facts, but cannot write database rows directly.
+- **Public database:** Supabase `public.property_listings`; RLS allows public reads only, and the frontend receives a limited public field mapping.
+- **Private data:** Supabase `private.property_submissions` retains the raw message and keyed IP fingerprint; `private.submission_rate_limits` tracks attempt windows. Both have RLS, explicit deny policies for browser roles, no browser table grants, and service-side access only.
+- **Legacy Wix CMS:** `propertyListings` and `propertyIntakes` are restricted to CMS editors. They remain archived/source records, not the active listing feed.
+- **Repository:** [artclass11/Astate](https://github.com/artclass11/Astate) stores source and tests; it is not the runtime database.
+- **Local AI connector:** `mcp-server.mjs` provides read-only local stdio MCP tools for public listings. It is not a publicly hosted HTTP MCP service.
+- **Public discovery / export:** `/listings.html`, `/ai-data.html`, `/llms.txt`, `/robots.txt`, and `/sitemap.xml` describe public property data. JSON/CSV exports include only public fields.
 
-## Quality gates
+## Server-side security controls
 
-Run these checks locally or through GitHub Actions:
+The website submits to `https://qebuxmnvgkksueikhxya.supabase.co/functions/v1/property-gateway`. The frontend's Supabase publishable key is public by design. Supabase's server-side environment credentials are used only by the Edge Function and must never be copied to client files, GitHub, logs, issues, or chat.
+
+The gateway validates property-only plain text and allowed property types, caps the message length, redacts common phone/email/URL patterns from the public description, rejects duplicate submissions, and uses keyed IP fingerprints to limit five attempts per 15-minute window. Its database insertion RPC is executable only by `service_role`. Public roles cannot insert/update/delete rows directly.
+
+These controls reduce common attack paths, but cannot guarantee that no one will hack or abuse the site. The rate limit is not a CAPTCHA/WAF and depends on trustworthy edge IP headers. Sophisticated distributed abuse, logic bugs and upstream platform incidents remain possible. Do not add credentials or private submission data to public repo files.
+
+## Quality gates and recurring monitoring
+
+Run locally or through GitHub Actions:
 
 ```bash
 npm install --ignore-scripts --no-audit --no-fund
 npm run check
 npm test
+node scripts/site-health-check.mjs
 ```
 
-Tests cover category validation, contact-pattern redaction, fit ranking, two-way matching, budget/area compatibility, and hard-conflict filtering. GitHub Actions is the source of truth for the most recent CI result.
+The daily workflow runs at 00:00 UTC (05:30 IST) plus on source pushes and can be run manually. It checks the live pages, public data gateway contract, and rejection of a non-property submission without creating a listing. Failures open or update one GitHub incident issue. The workflow reports and tests; it deliberately does not silently hotfix production code.
 
 ## Deployment policy
 
-Wix remains the live host. GitHub is version control/CI and is not the current serving host. The optional GitHub-to-Wix workflow requires a privileged Wix access token in GitHub Actions secrets; without that credential it intentionally skips deployment. Keep privileged secrets out of the repository and never paste them into chat or source files.
+Wix is the live host. The published site was updated through the connected Wix deployment path. The optional GitHub-to-Wix workflow still requires a privileged `WIX_ACCESS_TOKEN` secret and must not be reported as active when its steps were skipped. Every static-site upload replaces the complete file set, so upload all 11 public site files when deploying.
 
-Before production deployment, verify the GitHub Actions run, publish the source using an authorized Wix deployment path, then inspect the saved files and public homepage. Never report success from a skipped workflow.
+After changes, confirm GitHub Actions checks, the public site pages, and the gateway health check. Check Supabase Security Advisors after schema changes and after new public endpoints are introduced. Never report success from a skipped workflow.
 
-## Weekly email backups
+## Backups and recovery
 
-The scheduled workflow exports **publicly published listing fields only** and emails JSON/CSV attachments to artclassstudio11@gmail.com when SMTP secrets are configured. It deliberately excludes the restricted `propertyIntakes` collection because a public anonymous token must not read it.
+The weekly workflow exports public listing fields as JSON and CSV. It emails those attachments to artclassstudio11@gmail.com only when `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` are configured in GitHub Actions secrets; optional `SMTP_FROM` overrides the sender. It excludes private submissions and never commits data backups to the public repo.
 
-Required repository Actions secrets for delivery:
-
-- `SMTP_HOST` — provider SMTP host
-- `SMTP_PORT` — usually 465 for SSL or 587 for STARTTLS
-- `SMTP_USERNAME` — sending mailbox
-- `SMTP_PASSWORD` — an app password or provider-specific SMTP credential, never the normal account password unless the provider explicitly instructs it
-
-The workflow will report that email delivery was skipped if those secrets are missing. It does not commit backups into this public repository. **This is not yet a full private-data disaster-recovery backup.** To back up restricted raw submissions, configure a server-side, renewable administrator credential and a private destination with access control and retention. Never add private-intake data to public Actions artifacts or a public Git branch.
+The private raw-submission table is in Supabase, but a complete private backup schedule, retention policy and restore rehearsal are still open items. Do not treat a public backup as disaster recovery. Configure a private backup destination only after checking current costs and access controls.
 
 ## Incident response
 
-1. For junk listings, suspend public insert or add a server-side write gateway; front-end filters do not stop direct API writes.
-2. Keep a local JSON/CSV copy before bulk cleanup.
-3. Compare public references and creation times; avoid deleting records based solely on free-text keywords.
-4. Inspect GitHub Actions results and Wix saved files before retrying deploys.
-5. After restoring service, add a regression test that reproduces the incident.
-6. Do not promise Google ranking, title verification, property availability, or contact ownership. Astate matches leads; legal/title diligence remains with users.
+1. Review the daily health issue and the linked GitHub Actions logs.
+2. Inspect Supabase Edge Function logs and Security Advisors.
+3. If the write gateway is being abused, disable the function or temporarily return a maintenance response, then restore after review.
+4. Use an authorized server-side/admin path for moderation and removal. Anonymous users must not edit or delete public listings.
+5. Before destructive cleanup, export a private copy and review reference IDs and timestamps.
+6. Add a regression test for each incident and rotate any privileged credential that might have been exposed.
 
 ## Enterprise gaps still open
 
-- Server-side public-post validation and rate/abuse controls
-- Secure administrator-only backup of `propertyIntakes` and restore rehearsal
-- Authenticated internal admin tools for edit/remove, audit trail, and retention rules
-- Real hosted remote MCP endpoint if other AI clients need URL-based connector registration
-- Verified domain/Search Console ownership and recurring SEO/indexation monitoring
+- Full private-data backup automation and a successful restore drill.
+- Authenticated internal admin tools for edits/removals, a durable audit trail, data-retention rules, and review/appeal flow.
+- Stronger anti-bot protection (e.g. a free challenge service) if spam volume warrants it.
+- Real hosted remote MCP endpoint if other AI clients need URL-based connector registration.
+- Verified domain/Search Console ownership and SEO/indexation monitoring.
+- Independent penetration testing and operational monitoring; no security control guarantees the site is unhackable.
