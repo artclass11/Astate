@@ -91,24 +91,24 @@ async function main() {
       const status = norm(item.listingStatus || "published");
       if (!["published", "live", "active"].includes(status) || !isAllowedRecord(item)) continue;
       rows.push({
-        reference: String(item.publicId || item.slug || item._id || ""),
-        title: String(item.title || ""),
-        listingType: String(item.listingType || ""),
-        propertyType: String(item.propertyType || ""),
-        city: String(item.city || ""),
-        locality: String(item.locality || ""),
-        district: String(item.district || ""),
-        state: String(item.state || ""),
+        reference: redact(item.publicId || item.slug || item._id || ""),
+        title: redact(item.title || ""),
+        listingType: redact(item.listingType || ""),
+        propertyType: redact(item.propertyType || ""),
+        city: redact(item.city || ""),
+        locality: redact(item.locality || ""),
+        district: redact(item.district || ""),
+        state: redact(item.state || ""),
         areaValue: item.areaValue ?? null,
-        areaUnit: String(item.areaUnit || ""),
+        areaUnit: redact(item.areaUnit || ""),
         priceINR: item.priceINR ?? null,
         budgetMinINR: item.budgetMinINR ?? null,
         budgetMaxINR: item.budgetMaxINR ?? null,
-        landUse: String(item.landUse || ""),
-        roadAccess: String(item.roadAccess || ""),
+        landUse: redact(item.landUse || ""),
+        roadAccess: redact(item.roadAccess || ""),
         description: redact(item.description || ""),
-        listingStatus: String(item.listingStatus || "published"),
-        source: String(item.source || "Astate public listing"),
+        listingStatus: redact(item.listingStatus || "published"),
+        source: redact(item.source || "Astate public listing"),
         lastReviewed: item.lastReviewed || null
       });
     }
