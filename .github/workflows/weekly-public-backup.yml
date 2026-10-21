@@ -1,0 +1,48 @@
+name: Weekly Astate public-listings email
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sunday 02:00 IST. GitHub can start a scheduled run later than the cron target.
+    - cron: "30 20 * * 6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astate-weekly-public-backup
+  cancel-in-progress: false
+
+jobs:
+  export-and-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Export public records with safe-field allowlist
+        env:
+          ASTATE_WIX_CLIENT_ID: "96489451-651f-4da0-b2fc-2f6047202f23"
+        run: node scripts/export-public-listings.mjs
+
+      - name: Email JSON and CSV (only when SMTP secrets are configured)
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+        run: |
+          if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_PORT" ] || [ -z "$SMTP_USERNAME" ] || [ -z "$SMTP_PASSWORD" ]; then
+            echo "::notice::Public JSON/CSV were generated, but email delivery is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USERNAME, and SMTP_PASSWORD under repository Actions secrets."
+            echo "### Astate weekly backup" >> "$GITHUB_STEP_SUMMARY"
+            echo "Public JSON/CSV export completed. Email was **not sent** because SMTP credentials are not configured. This workflow does not back up restricted private intake records." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 scripts/send-backup-email.py
