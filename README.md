@@ -7,8 +7,8 @@ Astate is a public, text-first real-estate marketplace and buyer/seller lead mat
 ## Architecture
 
 - **Live hosting / primary CMS:** Wix Headless and Wix CMS.
-- **Public feed:** `propertyListings` contains public property offers and buyer requirements.
-- **Restricted intake copy:** `propertyIntakes` is intended for private raw-submission/support records and is not exposed through the public feed or local MCP.
+- **Public feed:** Supabase `public.property_listings` contains published, allowlisted property facts; its RLS policy permits public reads only.
+- **Restricted intake copy:** Supabase `private.property_submissions` stores the raw submitted message and a keyed IP fingerprint; the private schema is not exposed through the public Data API.
 - **Web client:** static HTML/CSS/JavaScript in the root and `assets/`.
 - **AI connector:** `mcp-server.mjs` provides read-only local stdio MCP tools (`search_properties`, `match_buyer_seller`, `get_property_listing`).
 - **GitHub:** source of record for the web frontend, tests, Actions, and local MCP server. It is not the runtime database.
@@ -39,11 +39,15 @@ The repository includes a **local stdio MCP connector**, not a public persistent
 
 ## CI, CodeQL and deployment
 
-GitHub Actions runs source syntax checks and regression tests. CodeQL scans the JavaScript codebase weekly and on source changes. Dependabot checks npm and GitHub Actions dependencies weekly.
+GitHub Actions runs source syntax checks and regression tests. A separate daily scheduled workflow checks key live pages, the Supabase public feed, and the rejection of invalid non-property posts; failures open or update a GitHub incident issue. CodeQL scans the JavaScript codebase weekly and on source changes. Dependabot checks npm and GitHub Actions dependencies weekly.
 
 - `.github/workflows/deploy-wix.yml` is prepared for optional GitHub-to-Wix deployment. It is **skipped** unless a valid `WIX_ACCESS_TOKEN` secret is configured. The token must have the needed deployment rights and can expire; never commit it.
 - `.github/workflows/mirror-live-site.yml` is intentionally **manual only**. It imports source from the live Wix site only when explicitly run, so it cannot overwrite GitHub source on a schedule.
 - The live site can also be patched/published with the connected Wix tool path, as used for this deployment.
+
+## Automated daily health check
+
+`.github/workflows/daily-health-check.yml` runs every day at 00:00 UTC (05:30 IST), and can be run manually. It checks that the live website pages respond, the public Supabase gateway returns a valid feed, and invalid non-property submissions are rejected without creating a record. Failures raise/update a GitHub issue; it does not auto-edit production code.
 
 ## Weekly backup email
 
