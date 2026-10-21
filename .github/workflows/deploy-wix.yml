@@ -1,0 +1,98 @@
+name: Deploy Astate to Wix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "listings.html"
+      - "submit.html"
+      - "ai-data.html"
+      - "privacy.html"
+      - "llms.txt"
+      - "robots.txt"
+      - "sitemap.xml"
+      - "assets/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astate-wix-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WIX_ACCESS_TOKEN: ${{ secrets.WIX_ACCESS_TOKEN }}
+      WIX_SITE_ID: "962ae318-bd0d-44d1-9415-6801c880737d"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Explain missing deployment credential
+        if: ${{ env.WIX_ACCESS_TOKEN == '' }}
+        run: |
+          echo "::notice::Wix deployment skipped. Add a valid Wix deployment access token as the WIX_ACCESS_TOKEN Actions secret to enable GitHub-to-Wix deploys."
+          echo "### Wix deployment skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "No deployment was attempted because WIX_ACCESS_TOKEN is not configured. The existing live Wix site is unchanged." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download and preserve current Wix site snapshot
+        if: ${{ env.WIX_ACCESS_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq zip unzip
+          mkdir -p "$RUNNER_TEMP/astate-snapshot"
+          curl --fail --silent --show-error --location --retry 2 \
+            -H "Authorization: Bearer $WIX_ACCESS_TOKEN" \
+            -o "$RUNNER_TEMP/current-wix-site.zip" \
+            "https://www.wix.com/_api/wixstro-deployments/v1/instant-sites/$WIX_SITE_ID/download.zip"
+          unzip -q "$RUNNER_TEMP/current-wix-site.zip" -d "$RUNNER_TEMP/astate-snapshot"
+          rm -f "$RUNNER_TEMP/astate-snapshot/wix.config.json"
+
+      - name: Overlay GitHub frontend source onto preserved snapshot
+        if: ${{ env.WIX_ACCESS_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          for file in index.html listings.html submit.html ai-data.html privacy.html llms.txt robots.txt sitemap.xml assets/app.js assets/config.js assets/site.css; do
+            test -s "$file"
+            mkdir -p "$RUNNER_TEMP/astate-snapshot/$(dirname "$file")"
+            cp "$file" "$RUNNER_TEMP/astate-snapshot/$file"
+          done
+          test -s "$RUNNER_TEMP/astate-snapshot/index.html"
+          cd "$RUNNER_TEMP/astate-snapshot"
+          zip -qr "$RUNNER_TEMP/astate-deploy.zip" .
+
+      - name: Publish snapshot to the existing Wix site
+        if: ${{ env.WIX_ACCESS_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/wix-deploy-response.json"
+          curl --fail --silent --show-error --location --retry 1 \
+            -H "Authorization: Bearer $WIX_ACCESS_TOKEN" \
+            -F "files=@$RUNNER_TEMP/astate-deploy.zip;filename=astate-site.zip" \
+            "https://www.wixapis.com/headless-business-setup/v1/headless-business/$WIX_SITE_ID/drop?campaign=github-actions&agent=astate" \
+            -o "$response"
+          python3 - "$response" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              data = json.load(f)
+          if not data.get("siteUrl") and not data.get("uploadId"):
+              raise SystemExit("Wix did not return deployment confirmation.")
+          print("Deployment response received.")
+          if data.get("siteUrl"):
+              print("Site URL:", data["siteUrl"])
+          PY
+
+      - name: Verify the published homepage returns HTTP 200
+        if: ${{ env.WIX_ACCESS_TOKEN != '' }}
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/" \
+            -o "$RUNNER_TEMP/astate-live-home.html"
+          grep -q "ASTATE" "$RUNNER_TEMP/astate-live-home.html"
+          echo "Homepage HTTP check passed." >> "$GITHUB_STEP_SUMMARY"
