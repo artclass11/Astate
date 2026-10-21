@@ -26,9 +26,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Export public records with safe-field allowlist
-        env:
-          ASTATE_WIX_CLIENT_ID: "96489451-651f-4da0-b2fc-2f6047202f23"
+      - name: Export the active Supabase public feed with safe-field allowlist
         run: node scripts/export-public-listings.mjs
 
       - name: Email JSON and CSV (only when SMTP secrets are configured)
