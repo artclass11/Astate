@@ -72,7 +72,7 @@
       const response = await apiPost('/wix-data/v2/items/query', {dataCollectionId:cfg.publicCollection, query:{filter:{}, paging:{limit:100, offset}}, returnTotalCount:false});
       const rows = Array.isArray(response.dataItems) ? response.dataItems : [];
       for (const row of rows) {
-        const item = row.data || row;
+        const item = sanitizePublicRecord(row.data || row);
         const status = normalize(item.listingStatus || 'published');
         if ((status === 'published' || status === 'live' || status === 'active') && validateRealEstateRecord(item)) all.push(item);
       }
@@ -241,6 +241,23 @@
       .replace(/\bwhatsapp\s*(?:me|at|on|number)?\s*[:=-]?\s*\d[\d\s-]{7,}/gi, 'WhatsApp [contact hidden]')
       .replace(/\b(?:call|phone|mobile|contact)\s*(?:me|at|on)?\s*[:=-]?\s*\d[\d\s-]{7,}/gi, '[contact hidden]')
       .replace(/[ \t]{2,}/g, ' ').trim();
+  }
+
+  function sanitizePublicRecord(item) {
+    const source = item && typeof item === 'object' ? item : {};
+    const textFields = ['_id','publicId','slug','title','listingType','propertyType','city','locality','district','state','areaUnit','landUse','roadAccess','description','listingStatus','source','lastReviewed'];
+    const numberFields = ['areaValue','priceINR','budgetMinINR','budgetMaxINR'];
+    const safe = {};
+    for (const key of textFields) {
+      if (source[key] !== undefined && source[key] !== null) safe[key] = redactPublicContacts(String(source[key]));
+    }
+    for (const key of numberFields) {
+      const value = source[key];
+      if (value === undefined || value === null || value === '') continue;
+      const number = Number(value);
+      if (Number.isFinite(number)) safe[key] = number;
+    }
+    return safe;
   }
 
   function cleanListingTitle(intent, propertyType, city, locality) {
@@ -651,7 +668,10 @@
   function exportListings(items, format) {
     const fields = ['publicId','title','listingType','propertyType','city','locality','district','state','areaValue','areaUnit','priceINR','budgetMinINR','budgetMaxINR','landUse','roadAccess','description','listingStatus','source','lastReviewed'];
     const stamp = new Date().toISOString().slice(0, 10);
-    const safeItems = items.map(item => Object.fromEntries(fields.map(key => [key, key === 'description' ? redactPublicContacts(item[key] ?? '') : item[key] ?? ''])));
+    const safeItems = items.map(item => Object.fromEntries(fields.map(key => {
+      const value = item[key] ?? '';
+      return [key, typeof value === 'string' ? redactPublicContacts(value) : value];
+    })));
     if (format === 'csv') {
       const csv = '\ufeff' + [fields.map(csvCell).join(','), ...safeItems.map(item => fields.map(key => csvCell(item[key])).join(','))].join('\r\n');
       downloadBlob('astate-public-listings-' + stamp + '.csv', csv, 'text/csv');
