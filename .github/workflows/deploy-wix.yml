@@ -31,7 +31,7 @@ jobs:
       WIX_SITE_ID: "962ae318-bd0d-44d1-9415-6801c880737d"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Explain missing deployment credential
         if: ${{ env.WIX_ACCESS_TOKEN == '' }}
