@@ -191,7 +191,7 @@ function matchScore(query, item) {
   if (area) {
     const itemValue = Number(item.areaValue || 0);
     const unit = norm(item.areaUnit || "sq m");
-    const factor = /acre/.test(unit) ? 4046.8564224 : /hectare|^ha$/.test(unit) ? 10000 : /guntha|gunta/.test(unit) ? 101.17141056 : /sq\\s*ft|sqft|square feet/.test(unit) ? 0.09290304 : 1;
+    const factor = /acre/.test(unit) ? 4046.8564224 : /hectare|^ha$/.test(unit) ? 10000 : /guntha|gunta/.test(unit) ? 101.17141056 : /sq\s*ft|sqft|square feet/.test(unit) ? 0.09290304 : 1;
     if (itemValue > 0 && area.sqM > 0) {
       const itemSqM = itemValue * factor;
       const itemIsOffer = candidateType === "sell";
