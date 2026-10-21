@@ -31,6 +31,23 @@ function redactPublicContacts(text) {
     .replace(/[ \t]{2,}/g, " ").trim();
 }
 
+function sanitizePublicRecord(item) {
+  const source = item && typeof item === "object" ? item : {};
+  const textFields = ["_id", "publicId", "slug", "title", "listingType", "propertyType", "city", "locality", "district", "state", "areaUnit", "landUse", "roadAccess", "description", "listingStatus", "source", "lastReviewed"];
+  const numberFields = ["areaValue", "priceINR", "budgetMinINR", "budgetMaxINR"];
+  const safe = {};
+  for (const key of textFields) {
+    if (source[key] !== undefined && source[key] !== null) safe[key] = redactPublicContacts(String(source[key]));
+  }
+  for (const key of numberFields) {
+    const value = source[key];
+    if (value === undefined || value === null || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) safe[key] = number;
+  }
+  return safe;
+}
+
 function isRealEstateRecord(item) {
   const type = norm(item?.listingType).toUpperCase();
   if (type !== "BUY" && type !== "SELL") return false;
@@ -145,7 +162,7 @@ async function getListings(force = false) {
     const result = await response.json();
     const rows = Array.isArray(result.dataItems) ? result.dataItems : [];
     for (const row of rows) {
-      const item = row.data || row;
+      const item = sanitizePublicRecord(row.data || row);
       const status = norm(item.listingStatus || "published");
       if (["published", "live", "active"].includes(status) && isRealEstateRecord(item)) all.push(item);
     }
