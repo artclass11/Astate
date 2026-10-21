@@ -191,12 +191,23 @@ function matchScore(query, item) {
   if (area) {
     const itemValue = Number(item.areaValue || 0);
     const unit = norm(item.areaUnit || "sq m");
-    const factor = /acre/.test(unit) ? 4046.8564224 : /hectare|^ha$/.test(unit) ? 10000 : /guntha|gunta/.test(unit) ? 101.17141056 : /sq\s*ft|sqft|square feet/.test(unit) ? 0.09290304 : 1;
-    if (itemValue > 0) {
+    const factor = /acre/.test(unit) ? 4046.8564224 : /hectare|^ha$/.test(unit) ? 10000 : /guntha|gunta/.test(unit) ? 101.17141056 : /sq\\s*ft|sqft|square feet/.test(unit) ? 0.09290304 : 1;
+    if (itemValue > 0 && area.sqM > 0) {
       const itemSqM = itemValue * factor;
-      const ratio = itemSqM / area.sqM;
-      const fit = ratio >= 0.9 ? 1 : ratio >= 0.75 ? 0.7 : ratio >= 0.5 ? 0.4 : 0.15;
-      add(15, fit, fit >= 0.7 ? "Area is close to requirement" : "Area is smaller than requested", fit < 0.7);
+      const itemIsOffer = candidateType === "sell";
+      // Buyer query -> candidate is an offer: it must meet or exceed the requested area.
+      // Seller query -> candidate is a buyer requirement: it must fit within available area.
+      const ratio = itemIsOffer ? itemSqM / area.sqM : area.sqM / itemSqM;
+      let fit;
+      let reason;
+      if (itemIsOffer) {
+        fit = ratio >= 0.9 ? 1 : ratio >= 0.75 ? 0.7 : ratio >= 0.5 ? 0.4 : 0.15;
+        reason = ratio >= 0.9 ? "Offer area meets the requested area" : "Offer area is smaller than requested";
+      } else {
+        fit = ratio >= 0.95 ? 1 : ratio >= 0.8 ? 0.65 : ratio >= 0.67 ? 0.35 : 0.1;
+        reason = ratio >= 0.95 ? "Buyer need fits within available area" : "Buyer may need more area than offered";
+      }
+      add(15, fit, reason, fit < 0.7);
     } else add(15, 0.3, "Area not stated", true);
   }
   const overlap = textOverlap(query, item);
