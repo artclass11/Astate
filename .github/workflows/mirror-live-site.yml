@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Mirror published public website files
         env:
           BASE_URL: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com

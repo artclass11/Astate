@@ -10,18 +10,6 @@
     return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
   function normalize(value) { return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
-  async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await fetch(url, { ...options, signal: controller.signal });
-    } catch (error) {
-      if (error && error.name === 'AbortError') throw new Error('The data service took too long to respond. Please retry.');
-      throw error;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
   function money(value) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return 'Price not stated';
@@ -43,12 +31,12 @@
     const ref = item.publicId || item.slug || item._id || 'ASTATE';
     const price = item.listingType === 'BUY' && item.budgetMaxINR ? `Budget up to ${money(item.budgetMaxINR)}` : money(item.priceINR);
     const place = [item.locality, item.city, item.district, item.state].filter(Boolean).join(', ');
-    const summary = redactPublicContacts(item.description || item.landUse || 'Details available in the listing record.');
+    const summary = item.description || item.landUse || 'Details available in the listing record.';
     return `<article class="listing-card"><div class="listing-card-top"><span class="pill ${item.listingType === 'BUY' ? 'pill-buy' : ''}">${escapeHtml(prettyType(item))}</span><span class="listing-ref">${escapeHtml(ref)}</span></div><h3>${escapeHtml(item.title || `${item.propertyType || 'Property'} in ${item.city || 'Maharashtra'}`)}</h3><div class="listing-place">⌖ ${escapeHtml(place || 'Location not specified')}</div><div class="listing-facts"><span><small>TYPE</small>${escapeHtml(item.propertyType || 'Not stated')}</span><span><small>AREA</small>${escapeHtml(areaLabel(item))}</span></div><div class="listing-price">${escapeHtml(price)}</div><p class="listing-description">${escapeHtml(summary)}</p>${item.roadAccess ? `<div class="listing-extra">Access: ${escapeHtml(item.roadAccess)}</div>` : ''}<div class="listing-card-bottom"><span>Public community listing</span><span class="contact-links"><a href="https://www.instagram.com/amormagics/" target="_blank" rel="noopener" aria-label="Ask about reference ${escapeHtml(ref)} via amormagics">@amormagics ↗</a><a href="https://www.instagram.com/arcstudio91/" target="_blank" rel="noopener" aria-label="Ask about reference ${escapeHtml(ref)} via arcstudio91">@arcstudio91 ↗</a></span></div></article>`;
   }
   async function getToken() {
     if (cachedToken) return cachedToken;
-    const res = await fetchWithTimeout(`${cfg.apiBase}/oauth2/token`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({clientId:cfg.wixClientId, grantType:'anonymous'})}, 12000);
+    const res = await fetch(`${cfg.apiBase}/oauth2/token`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({clientId:cfg.wixClientId, grantType:'anonymous'})});
     if (!res.ok) throw new Error(`Secure data connection could not start (${res.status}).`);
     const json = await res.json();
     if (!json.access_token) throw new Error('No visitor access token was returned.');
@@ -57,7 +45,7 @@
   }
   async function apiPost(path, body) {
     const token = await getToken();
-    const res = await fetchWithTimeout(`${cfg.apiBase}${path}`, {method:'POST', headers:{'Authorization':token,'Content-Type':'application/json'}, body:JSON.stringify(body)}, 15000);
+    const res = await fetch(`${cfg.apiBase}${path}`, {method:'POST', headers:{'Authorization':token,'Content-Type':'application/json'}, body:JSON.stringify(body)});
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const msg = json?.message || json?.details?.applicationError?.description || `Wix request failed (${res.status}).`;
@@ -74,7 +62,7 @@
       for (const row of rows) {
         const item = row.data || row;
         const status = normalize(item.listingStatus || 'published');
-        if ((status === 'published' || status === 'live' || status === 'active') && validateRealEstateRecord(item)) all.push(item);
+        if (status === 'published' || status === 'live' || status === 'active') all.push(item);
       }
       const meta = response.pagingMetadata || {};
       const next = typeof meta.hasNext === 'boolean' ? meta.hasNext : rows.length === 100;
@@ -164,8 +152,6 @@
     if (/commercial|shop|office|retail|showroom|mall|business park|coworking|co-working/.test(t)) return 'Commercial';
     if (/residential|flat|apartment|house|bungalow|villa|row house|townhouse|penthouse/.test(t)) return 'Residential';
     if (/building|complex|tower|society|premises/.test(t)) return 'Building';
-    // A bare acreage statement signals land, but does not prove agricultural classification.
-    if (/\b[0-9]+(?:[.][0-9]+)?\s*(?:acres?|hectares?|ha|gunthas?|guntas?)\b/.test(t)) return 'Plot / land';
     if (/plot|land parcel|land|estate/.test(t)) return 'Plot / land';
     return '';
   }
@@ -223,14 +209,6 @@
     if (nonPropertyProduct && !explicitPropertyAsset) return { ok: false, reason: 'This looks like a product/business listing rather than a property asset. Astate only accepts real estate.' };
     if (/\b(buy|sell|selling|buying|rent|lease|for sale|looking for|want to|need|available|offer|requirement|property)\b/.test(t) === false) return { ok: false, reason: 'Please state whether the property is for sale/rent or what property you need.' };
     return { ok: true, reason: '' };
-  }
-
-  function validateRealEstateRecord(item) {
-    const listingType = normalize(item && item.listingType).toUpperCase();
-    if (listingType !== 'BUY' && listingType !== 'SELL') return false;
-    const text = [item && item.title, item && item.propertyType, item && item.landUse, item && item.description]
-      .filter(Boolean).join(' ');
-    return validateRealEstateMessage(text).ok;
   }
 
   function redactPublicContacts(text) {
@@ -445,7 +423,7 @@
     const scoreLabel = limited ? 'Add budget, area or property type to refine' : 'Fit score ' + match.score + '/100';
     const reasons = (match && match.reasons.length ? match.reasons : ['Some listing details still need confirmation']).slice(0, 3).join(' · ');
     const caveats = match && match.caveats.length ? '<small class="match-caveats">Confirm: ' + escapeHtml(match.caveats.slice(0, 2).join(' · ')) + '</small>' : '';
-    return '<div class="match-card"><div class="match-card-top"><span class="pill ' + (isBuyer ? 'pill-buy' : '') + '">' + escapeHtml(prettyType(item)) + '</span><span class="listing-ref">' + escapeHtml(ref) + '</span></div><div class="match-quality">' + escapeHtml(quality) + ' <span>' + escapeHtml(scoreLabel) + '</span></div><strong>' + escapeHtml(item.title || item.propertyType || 'Property') + '</strong><span>' + escapeHtml(location || 'Location not stated') + '</span><span>' + escapeHtml(areaLabel(item)) + ' · ' + escapeHtml(price) + '</span><p>' + escapeHtml(redactPublicContacts(item.description || '')) + '</p><div class="match-reasons">' + escapeHtml(reasons) + '</div>' + caveats + '</div>';
+    return '<div class="match-card"><div class="match-card-top"><span class="pill ' + (isBuyer ? 'pill-buy' : '') + '">' + escapeHtml(prettyType(item)) + '</span><span class="listing-ref">' + escapeHtml(ref) + '</span></div><div class="match-quality">' + escapeHtml(quality) + ' <span>' + escapeHtml(scoreLabel) + '</span></div><strong>' + escapeHtml(item.title || item.propertyType || 'Property') + '</strong><span>' + escapeHtml(location || 'Location not stated') + '</span><span>' + escapeHtml(areaLabel(item)) + ' · ' + escapeHtml(price) + '</span><p>' + escapeHtml(item.description || '') + '</p><div class="match-reasons">' + escapeHtml(reasons) + '</div>' + caveats + '</div>';
   }
   async function runChat(query) {
     const messages = $('#chatMessages'), results = $('#chatResults');
@@ -651,7 +629,7 @@
   function exportListings(items, format) {
     const fields = ['publicId','title','listingType','propertyType','city','locality','district','state','areaValue','areaUnit','priceINR','budgetMinINR','budgetMaxINR','landUse','roadAccess','description','listingStatus','source','lastReviewed'];
     const stamp = new Date().toISOString().slice(0, 10);
-    const safeItems = items.map(item => Object.fromEntries(fields.map(key => [key, key === 'description' ? redactPublicContacts(item[key] ?? '') : item[key] ?? ''])));
+    const safeItems = items.map(item => Object.fromEntries(fields.map(key => [key, item[key] ?? ''])));
     if (format === 'csv') {
       const csv = '\ufeff' + [fields.map(csvCell).join(','), ...safeItems.map(item => fields.map(key => csvCell(item[key])).join(','))].join('\r\n');
       downloadBlob('astate-public-listings-' + stamp + '.csv', csv, 'text/csv');
@@ -670,7 +648,7 @@
     const pre=$('#jsonOutput'), status=$('#feedStatus'), size=$('#jsonSize');
     try {
       const items=await fetchListings(); bindExportButtons(items);
-      const feed={schema:'urn:astate:property-listing:v1', publisher:'Astate Property Match', updatedAt:new Date().toISOString(), count:items.length, privacy:'Only published listing fields are included; private intake records are not accessible.', listings:items.map(item=>({reference:item.publicId || item.slug || item._id || '', title:item.title || '', listingType:item.listingType || '', propertyType:item.propertyType || '', city:item.city || '', locality:item.locality || '', district:item.district || '', state:item.state || '', areaValue:item.areaValue ?? null, areaUnit:item.areaUnit || '', priceINR:item.priceINR ?? null, budgetMinINR:item.budgetMinINR ?? null, budgetMaxINR:item.budgetMaxINR ?? null, landUse:item.landUse || '', roadAccess:item.roadAccess || '', description:redactPublicContacts(item.description || ''), lastReviewed:item.lastReviewed || null, source:item.source || 'Astate published listing'}))};
+      const feed={schema:'urn:astate:property-listing:v1', publisher:'Astate Property Match', updatedAt:new Date().toISOString(), count:items.length, privacy:'Only published listing fields are included; private intake records are not accessible.', listings:items.map(item=>({reference:item.publicId || item.slug || item._id || '', title:item.title || '', listingType:item.listingType || '', propertyType:item.propertyType || '', city:item.city || '', locality:item.locality || '', district:item.district || '', state:item.state || '', areaValue:item.areaValue ?? null, areaUnit:item.areaUnit || '', priceINR:item.priceINR ?? null, budgetMinINR:item.budgetMinINR ?? null, budgetMaxINR:item.budgetMaxINR ?? null, landUse:item.landUse || '', roadAccess:item.roadAccess || '', description:item.description || '', lastReviewed:item.lastReviewed || null, source:item.source || 'Astate published listing'}))};
       const text=JSON.stringify(feed,null,2); pre.textContent=text; status.textContent=`Connected · ${items.length} published record${items.length===1?'':'s'}`; status.classList.add('text-good'); size.textContent=`${new Blob([text]).size.toLocaleString()} BYTES`;
       $('#copyJson')?.addEventListener('click', async()=>{try{await navigator.clipboard.writeText(text);$('#copyJson').textContent='Copied ✓';}catch{pre.focus();const range=document.createRange();range.selectNodeContents(pre);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);$('#copyJson').textContent='Select and copy';}});
     } catch(e) { status.textContent='Feed currently unavailable'; pre.textContent=JSON.stringify({error:'The live public listing feed could not be loaded.', details:e.message || 'Unknown connection error', retry:'Refresh this page to try again.'},null,2); }
