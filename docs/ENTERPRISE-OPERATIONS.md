@@ -40,7 +40,7 @@ After changes, confirm GitHub Actions checks, the public site pages, and the gat
 
 ## Backups and recovery
 
-The weekly workflow exports public listing fields as JSON and CSV. It emails those attachments to artclassstudio11@gmail.com only when `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` are configured in GitHub Actions secrets; optional `SMTP_FROM` overrides the sender. It excludes private submissions and never commits data backups to the public repo.
+The weekly workflow exports public listing fields as JSON and CSV and saves a download artifact for 30 days. It emails those attachments to artclassstudio11@gmail.com only when `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` are configured in GitHub Actions secrets; optional `SMTP_FROM` overrides the sender. The daily health workflow also retains a public-only snapshot for 30 days. Both exclude private submissions and never commit data backups to the public repo.
 
 The private raw-submission table is in Supabase, but a complete private backup schedule, retention policy and restore rehearsal are still open items. Do not treat a public backup as disaster recovery. Configure a private backup destination only after checking current costs and access controls.
 
