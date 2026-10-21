@@ -1,8 +1,6 @@
-// Public Wix OAuth client ID. This ID can mint anonymous visitor tokens only; it is not a secret.
+// Supabase publishable key is intended for public clients; database writes are server-side only.
 window.ASTATE_CONFIG = Object.freeze({
-  wixClientId: "96489451-651f-4da0-b2fc-2f6047202f23",
-  apiBase: "https://www.wixapis.com",
-  publicCollection: "propertyListings",
-  intakeCollection: "propertyIntakes",
+  supabaseUrl: "https://qebuxmnvgkksueikhxya.supabase.co",
+  supabasePublishableKey: "sb_publishable_Gmm2akNrvAWGR_LNXLFwsQ_Rn3EMKEk",
   brand: "Astate"
 });
