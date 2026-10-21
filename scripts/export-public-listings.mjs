@@ -1,9 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const API_BASE = "https://www.wixapis.com";
-const CLIENT_ID = process.env.ASTATE_WIX_CLIENT_ID || "96489451-651f-4da0-b2fc-2f6047202f23";
-const COLLECTION = "propertyListings";
+const SUPABASE_URL = process.env.ASTATE_SUPABASE_URL || "https://qebuxmnvgkksueikhxya.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = process.env.ASTATE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_Gmm2akNrvAWGR_LNXLFwsQ_Rn3EMKEk";
+const GATEWAY_URL = SUPABASE_URL + "/functions/v1/property-gateway";
 const OUT_DIR = join(process.cwd(), "backups");
 
 function norm(value) {
@@ -54,10 +54,9 @@ async function fetchJson(url, options = {}, attempts = 3) {
       const response = await fetch(url, { ...options, signal: AbortSignal.timeout(15000) });
       const data = await response.json().catch(() => ({}));
       if (response.ok) return data;
-      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === attempts) {
-        throw new Error("Wix API returned " + response.status + ": " + (data.message || "request failed"));
-      }
-      lastError = new Error("Temporary Wix API status " + response.status);
+      const error = new Error("Astate gateway returned " + response.status + ": " + (data.error || "request failed"));
+      if (![429, 500, 502, 503, 504].includes(response.status) || attempt === attempts) throw error;
+      lastError = error;
     } catch (error) {
       lastError = error;
       if (attempt === attempts || (error?.name !== "AbortError" && !String(error).includes("fetch failed"))) throw error;
@@ -68,57 +67,48 @@ async function fetchJson(url, options = {}, attempts = 3) {
 }
 
 async function main() {
-  if (!CLIENT_ID) throw new Error("ASTATE_WIX_CLIENT_ID is missing.");
-  const tokenData = await fetchJson(API_BASE + "/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clientId: CLIENT_ID, grantType: "anonymous" })
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) throw new Error("Astate public gateway configuration is missing.");
+  const result = await fetchJson(GATEWAY_URL, {
+    method: "GET",
+    headers: { "apikey": SUPABASE_PUBLISHABLE_KEY, "Accept": "application/json" }
   });
-  if (!tokenData.access_token) throw new Error("Wix returned no anonymous visitor token.");
+  if (result.ok !== true || !Array.isArray(result.listings)) {
+    throw new Error("Astate gateway returned an invalid public-feed payload.");
+  }
   const rows = [];
-  for (let offset = 0; offset < 10000; offset += 100) {
-    const result = await fetchJson(API_BASE + "/wix-data/v2/items/query", {
-      method: "POST",
-      headers: { "Authorization": tokenData.access_token, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dataCollectionId: COLLECTION,
-        query: { filter: {}, paging: { limit: 100, offset } },
-        returnTotalCount: false
-      })
+  for (const item of result.listings) {
+    const status = norm(item.listingStatus || "published");
+    if (!["published", "live", "active"].includes(status) || !isAllowedRecord(item)) continue;
+    rows.push({
+      reference: redact(item.publicId || item.slug || ""),
+      title: redact(item.title || ""),
+      listingType: redact(item.listingType || ""),
+      propertyType: redact(item.propertyType || ""),
+      city: redact(item.city || ""),
+      locality: redact(item.locality || ""),
+      district: redact(item.district || ""),
+      state: redact(item.state || ""),
+      areaValue: item.areaValue ?? null,
+      areaUnit: redact(item.areaUnit || ""),
+      priceINR: item.priceINR ?? null,
+      budgetMinINR: item.budgetMinINR ?? null,
+      budgetMaxINR: item.budgetMaxINR ?? null,
+      landUse: redact(item.landUse || ""),
+      roadAccess: redact(item.roadAccess || ""),
+      description: redact(item.description || ""),
+      listingStatus: redact(item.listingStatus || "published"),
+      source: redact(item.source || "Astate public listing"),
+      lastReviewed: item.lastReviewed || null
     });
-    const items = Array.isArray(result.dataItems) ? result.dataItems.map(row => row.data || row) : [];
-    for (const item of items) {
-      const status = norm(item.listingStatus || "published");
-      if (!["published", "live", "active"].includes(status) || !isAllowedRecord(item)) continue;
-      rows.push({
-        reference: redact(item.publicId || item.slug || item._id || ""),
-        title: redact(item.title || ""),
-        listingType: redact(item.listingType || ""),
-        propertyType: redact(item.propertyType || ""),
-        city: redact(item.city || ""),
-        locality: redact(item.locality || ""),
-        district: redact(item.district || ""),
-        state: redact(item.state || ""),
-        areaValue: item.areaValue ?? null,
-        areaUnit: redact(item.areaUnit || ""),
-        priceINR: item.priceINR ?? null,
-        budgetMinINR: item.budgetMinINR ?? null,
-        budgetMaxINR: item.budgetMaxINR ?? null,
-        landUse: redact(item.landUse || ""),
-        roadAccess: redact(item.roadAccess || ""),
-        description: redact(item.description || ""),
-        listingStatus: redact(item.listingStatus || "published"),
-        source: redact(item.source || "Astate public listing"),
-        lastReviewed: item.lastReviewed || null
-      });
-    }
-    const hasNext = typeof result.pagingMetadata?.hasNext === "boolean"
-      ? result.pagingMetadata.hasNext
-      : items.length === 100;
-    if (!hasNext || items.length === 0) break;
   }
   const exportedAt = new Date().toISOString();
-  const safe = { schema: "urn:astate:public-listings-backup:v1", exportedAt, count: rows.length, privacy: "Public fields only. Private intake records and contact details are not included.", listings: rows };
+  const safe = {
+    schema: "urn:astate:public-listings-backup:v1",
+    exportedAt,
+    count: rows.length,
+    privacy: "Published public fields only. Private raw submissions, IP fingerprints, and contact details are not included.",
+    listings: rows
+  };
   await mkdir(OUT_DIR, { recursive: true });
   await writeFile(join(OUT_DIR, "public-listings.json"), JSON.stringify(safe, null, 2) + "\n", "utf8");
   const fields = Object.keys(rows[0] || {
@@ -129,10 +119,10 @@ async function main() {
   const csvCell = value => '"' + String(value ?? "").replace(/"/g, '""') + '"';
   const csv = "\ufeff" + [fields.map(csvCell).join(","), ...rows.map(row => fields.map(field => csvCell(row[field])).join(","))].join("\r\n");
   await writeFile(join(OUT_DIR, "public-listings.csv"), csv, "utf8");
-  console.log(JSON.stringify({ exportedAt, count: rows.length, files: ["backups/public-listings.json", "backups/public-listings.csv"], privateIntakesIncluded: false }));
+  console.log(JSON.stringify({ exportedAt, count: rows.length, json: "backups/public-listings.json", csv: "backups/public-listings.csv" }));
 }
 
 main().catch(error => {
-  console.error("Astate public backup export failed:", error?.message || error);
+  console.error("Public listing export failed:", error?.message || error);
   process.exitCode = 1;
 });
