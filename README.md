@@ -20,7 +20,7 @@ Astate is a public, text-first real-estate marketplace and buyer/seller lead mat
 - The browser and MCP read paths apply real-estate category filters; the browser and MCP output paths apply timeouts and contact-pattern redaction. Public JSON/CSV export uses an explicit public-field allowlist.
 - Tests cover real-estate category handling, common non-property exclusions, contact redaction, reciprocal matching, ranking, and hard conflicts.
 - Public posts can be indexed, copied, or cached by third parties. Redaction patterns are not a guarantee of privacy. Contributors should not post government IDs, signatures, bank details, or personal information they do not want public.
-- **Security gap to be aware of:** the current no-login path relies on a public Wix collection insert permission. A capable caller can bypass browser validation by calling Wix Data directly. Read-side checks do not stop invalid records being written. See [SECURITY.md](SECURITY.md) and [the operations runbook](docs/ENTERPRISE-OPERATIONS.md).
+- **Submission path:** public posts now go through the Supabase Edge Function `property-gateway`. The public table permits reads only; anonymous direct database writes are revoked. The legacy Wix `propertyListings` and `propertyIntakes` collections are restricted to CMS editors. Server-side validation, duplicate checks, keyed-IP rate limits, private raw-submission storage, and contact-pattern redaction reduce common abuse paths; they cannot guarantee zero attacks. See [SECURITY.md](SECURITY.md) and [the operations runbook](docs/ENTERPRISE-OPERATIONS.md).
 
 ## Run the local MCP server
 
