@@ -2,38 +2,62 @@
 
 **Live website:** https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/
 
-Astate is a text-first real-estate marketplace and buyer/seller matcher. People can post without creating an account. The website accepts property-related listings such as agricultural land, plots, houses, flats, villas, farmhouses, buildings, hotels, resorts, cafes/restaurants premises, offices, shops, warehouses and other real-estate assets.
+Astate is a public, text-first real-estate marketplace and buyer/seller lead matcher. People can search or post without creating an account. Accepted property categories include agricultural and other land, plots, houses, flats, villas, farmhouses, residential/commercial/industrial buildings, hotels, resorts, cafes and restaurant premises, offices, shops, warehouses, institutional premises, rentals and leases.
 
-## Current architecture
+## Architecture
 
-- **Hosting and CMS:** Wix Headless; public records are stored in `propertyListings`. Raw post copies, when saved, are stored in the restricted `propertyIntakes` collection.
-- **Posting:** the website checks for real-estate subject matter, redacts common phone/email/URL patterns from public descriptions, and publishes the public property facts automatically.
-- **Matching:** heuristic fit scores use the available location, category/use, stated budget/asking price, area and site-feature information. Match results include reasons/caveats; they are not title or ownership verification.
-- **Exports:** use the JSON/CSV buttons on the live directory to save the public feed locally.
+- **Live hosting / primary CMS:** Wix Headless and Wix CMS.
+- **Public feed:** `propertyListings` contains public property offers and buyer requirements.
+- **Restricted intake copy:** `propertyIntakes` is intended for private raw-submission/support records and is not exposed through the public feed or local MCP.
+- **Web client:** static HTML/CSS/JavaScript in the root and `assets/`.
+- **AI connector:** `mcp-server.mjs` provides read-only local stdio MCP tools (`search_properties`, `match_buyer_seller`, `get_property_listing`).
+- **GitHub:** source of record for the web frontend, tests, Actions, and local MCP server. It is not the runtime database.
 - **Contacts:** Instagram [@amormagics](https://www.instagram.com/amormagics/) and [@arcstudio91](https://www.instagram.com/arcstudio91/).
-- **SEO/AI:** the live site includes a sitemap, robots.txt, llms.txt, structured page metadata, and an AI-readable public data view.
 
-The static website runs on Wix because it is already connected to Wix CMS. The workflow in `.github/workflows/mirror-live-site.yml` keeps public frontend source files in this repository for version history. The repository itself is not the database.
+## Reliability and data handling
 
-## Run the local MCP integration
+- Match results use location, property class/use, asking price or budget, area, and selected site features. They include fit reasons and caveats, and are lead matches—not title, ownership, legality, pricing, or availability verification.
+- The browser and MCP read paths apply real-estate category filters; the browser and MCP output paths apply timeouts and contact-pattern redaction. Public JSON/CSV export uses an explicit public-field allowlist.
+- Tests cover real-estate category handling, common non-property exclusions, contact redaction, reciprocal matching, ranking, and hard conflicts.
+- Public posts can be indexed, copied, or cached by third parties. Redaction patterns are not a guarantee of privacy. Contributors should not post government IDs, signatures, bank details, or personal information they do not want public.
+- **Security gap to be aware of:** the current no-login path relies on a public Wix collection insert permission. A capable caller can bypass browser validation by calling Wix Data directly. Read-side checks do not stop invalid records being written. See [SECURITY.md](SECURITY.md) and [the operations runbook](docs/ENTERPRISE-OPERATIONS.md).
 
-The read-only MCP server exposes public Astate listings to AI tools that support a local stdio MCP process. It does not expose private intake records and does not create or modify listings.
+## Run the local MCP server
+
+Requires Node.js 18 or newer.
 
 ```bash
-npm install
+npm install --ignore-scripts --no-audit --no-fund
+npm run check
+npm test
 npm start
 ```
 
-To connect an MCP-capable desktop client, copy `mcp-config.example.json` into that client's MCP configuration and replace the example file path with the absolute path to `mcp-server.mjs`. Restart the client after saving the configuration.
+To use the MCP server in a compatible local desktop AI client, copy [mcp-config.example.json](mcp-config.example.json) into that client's MCP configuration and replace the example server path with the absolute path to `mcp-server.mjs`. Restart the AI client after saving the configuration.
 
-**Remote MCP limitation:** a GitHub repository alone cannot host a persistent MCP HTTP endpoint. This repo includes a local stdio connector; a public hosted connector still needs a host that runs the server and must be registered with the relevant AI client.
+The repository includes a **local stdio MCP connector**, not a public persistent HTTP endpoint. GitHub alone does not host a running MCP process. Clients such as ChatGPT, Gemini, or Claude require their own supported connector/transport and user-side configuration; availability and registration differ by product.
 
-## Public posting and security notes
+## CI, CodeQL and deployment
 
-The site's browser validates property relevance and rejects obvious unrelated product posts. Because this current site is a static client connected directly to Wix Data, a technically capable caller may bypass browser-side checks by calling the public data API directly. Do not treat client-side validation as a security boundary or anti-spam system. A proper remote posting gateway with server-side validation/rate limiting is a separate deployment step.
+GitHub Actions runs source syntax checks and regression tests. CodeQL scans the JavaScript codebase weekly and on source changes. Dependabot checks npm and GitHub Actions dependencies weekly.
 
-Public posts can be copied or indexed by search engines and other visitors. Basic pattern redaction may miss unusual contact formats. Contributors should avoid typing personal or sensitive information into a public post.
+- `.github/workflows/deploy-wix.yml` is prepared for optional GitHub-to-Wix deployment. It is **skipped** unless a valid `WIX_ACCESS_TOKEN` secret is configured. The token must have the needed deployment rights and can expire; never commit it.
+- `.github/workflows/mirror-live-site.yml` is intentionally **manual only**. It imports source from the live Wix site only when explicitly run, so it cannot overwrite GitHub source on a schedule.
+- The live site can also be patched/published with the connected Wix tool path, as used for this deployment.
 
-## Search visibility
+## Weekly backup email
 
-The site provides crawler-friendly metadata, structured page markup, sitemap.xml, robots.txt, and llms.txt. Search ranking or indexing is controlled by search engines and cannot be guaranteed; verified domain ownership, Search Console submission, useful original listing content, external references, and sustained activity still matter.
+`.github/workflows/weekly-public-backup.yml` exports the public listing feed as JSON and CSV each Sunday and emails the attachments to **artclassstudio11@gmail.com** only when these GitHub Actions secrets are configured: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` (optional: `SMTP_FROM`). Use an SMTP app password or provider credential; do not use your normal mailbox password unless the provider explicitly requires it.
+
+**The workflow currently backs up public listing fields only. It does not read or back up the restricted `propertyIntakes` collection.** The private data backup needs a renewable admin credential and a private backup destination; that is not enabled by this public repository-only workflow. No backup files are committed to this public repo.
+
+The site directory also lets visitors download the public feed locally with JSON/CSV buttons.
+
+## Google and AI discovery
+
+The live site includes structured metadata, a sitemap, robots.txt, llms.txt, a public listings directory, and an AI-readable data page. These help crawling and understanding; they do not guarantee Google indexing/ranking or force any AI model to recommend Astate. Verify the site in Google Search Console, submit the sitemap, use original property-specific descriptions, and build legitimate inbound references.
+
+## Docs
+
+- [Security policy](SECURITY.md)
+- [Enterprise operations and backup runbook](docs/ENTERPRISE-OPERATIONS.md)
