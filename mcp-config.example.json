@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "astate-property-match": {
+      "command": "node",
+      "args": ["/absolute/path/to/Astate/mcp-server.mjs"],
+      "env": {
+        "ASTATE_SITE_URL": "https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com",
+        "ASTATE_WIX_CLIENT_ID": "96489451-651f-4da0-b2fc-2f6047202f23"
+      }
+    }
+  }
+}
