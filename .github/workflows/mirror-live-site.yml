@@ -1,13 +1,7 @@
-name: Mirror live Astate source
+name: Manual mirror from live Astate site
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/mirror-live-site.yml"
-  schedule:
-    # Weekly Sunday 02:00 IST (Saturday 20:30 UTC; GitHub may start scheduled jobs later).
-    - cron: "30 20 * * 6"
 
 permissions:
   contents: write
@@ -22,7 +16,7 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Mirror published public website files
+      - name: Import current published public website files (manual only)
         env:
           BASE_URL: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com
         run: |
