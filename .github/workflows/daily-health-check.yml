@@ -38,7 +38,7 @@ jobs:
         id: health
         run: node scripts/site-health-check.mjs
       - name: Open or update incident issue when a check fails
-        if: failure()
+        if: failure() && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
