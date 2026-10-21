@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node mcp-server.mjs",
-    "check": "node --check mcp-server.mjs && node --check assets/app.js && node --check scripts/export-public-listings.mjs && python3 -m py_compile scripts/send-backup-email.py",
+    "check": "node --check mcp-server.mjs && node --check assets/app.js && node --check scripts/export-public-listings.mjs && node --check scripts/site-health-check.mjs && python3 -m py_compile scripts/send-backup-email.py",
     "backup:public": "node scripts/export-public-listings.mjs",
     "test": "node tests/matcher.test.cjs"
   },
