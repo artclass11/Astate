@@ -1,0 +1,55 @@
+name: Astate daily health and maintenance check
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # 05:30 Asia/Kolkata
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: astate-daily-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned project dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Run syntax checks
+        run: npm run check
+      - name: Run regression tests
+        run: npm test
+      - name: Check public website and gateway
+        id: health
+        run: node scripts/site-health-check.mjs
+      - name: Open or update incident issue when a check fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          title="Astate daily health check failure"
+          body="Automated daily checks failed. Review the run and its logs: ${RUN_URL}
+
+Commit: ${RUN_SHA}
+
+This workflow reports failures; it does not make unattended production code changes."
+          existing="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --body "${body}"
+          else
+            gh issue create --title "${title}" --body "${body}"
+          fi
