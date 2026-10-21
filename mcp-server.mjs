@@ -23,22 +23,22 @@ function norm(value) {
 
 function redactPublicContacts(text) {
   return String(text || "")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email hidden]")
-    .replace(/https?:\\/\\/\\S+/gi, "[link hidden]")
-    .replace(/(?:\\+?91[\\s-]*)?[6-9]\\d{4}[\\s-]?\\d{5}/g, "[phone hidden]")
-    .replace(/\\bwhatsapp\\s*(?:me|at|on|number)?\\s*[:=-]?\\s*\\d[\\d\\s-]{7,}/gi, "WhatsApp [contact hidden]")
-    .replace(/\\b(?:call|phone|mobile|contact)\\s*(?:me|at|on)?\\s*[:=-]?\\s*\\d[\\d\\s-]{7,}/gi, "[contact hidden]")
-    .replace(/[ \\t]{2,}/g, " ").trim();
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email hidden]")
+    .replace(/https?:\/\/\S+/gi, "[link hidden]")
+    .replace(/(?:\+?91[\s-]*)?[6-9]\d{4}[\s-]?\d{5}/g, "[phone hidden]")
+    .replace(/\bwhatsapp\s*(?:me|at|on|number)?\s*[:=-]?\s*\d[\d\s-]{7,}/gi, "WhatsApp [contact hidden]")
+    .replace(/\b(?:call|phone|mobile|contact)\s*(?:me|at|on)?\s*[:=-]?\s*\d[\d\s-]{7,}/gi, "[contact hidden]")
+    .replace(/[ \t]{2,}/g, " ").trim();
 }
 
 function isRealEstateRecord(item) {
   const type = norm(item?.listingType).toUpperCase();
   if (type !== "BUY" && type !== "SELL") return false;
   const allText = [item?.title, item?.propertyType, item?.landUse, item?.description].filter(Boolean).join(" ");
-  const propertyAnchor = /\\b(real estate|property|properties|land|plot|plots|acre|acres|hectare|guntha|guntas|house|home|bungalow|villa|flat|apartment|building|complex|tower|farmhouse|farm house|farm land|farmland|agricultural land|warehouse|godown|industrial shed|industrial property|commercial property|office space|office building|shop|showroom|retail space|hotel|resort|motel|lodge|guest house|guesthouse|cafe|café|restaurant|food court|school building|college building|hospital building|clinic building|mall|business park|factory building|residential|commercial|industrial|institutional|premises|realty|housing society|row house|townhouse|penthouse|hostel|pg accommodation|parking space|rental property|lease property|property for rent|shop for rent|office for rent|to let)\\b/i.test(allText);
+  const propertyAnchor = /\b(real estate|property|properties|land|plot|plots|acre|acres|hectare|guntha|guntas|house|home|bungalow|villa|flat|apartment|building|complex|tower|farmhouse|farm house|farm land|farmland|agricultural land|warehouse|godown|industrial shed|industrial property|commercial property|office space|office building|shop|showroom|retail space|hotel|resort|motel|lodge|guest house|guesthouse|cafe|café|restaurant|food court|school building|college building|hospital building|clinic building|mall|business park|factory building|residential|commercial|industrial|institutional|premises|realty|housing society|row house|townhouse|penthouse|hostel|pg accommodation|parking space|rental property|lease property|property for rent|shop for rent|office for rent|to let)\b/i.test(allText);
   const explicitAsset = Boolean(propertyFamily([item?.propertyType, item?.landUse].filter(Boolean).join(" "))) ||
-    /\\b(house|home|bungalow|villa|flat|apartment|building|land|plot|farmhouse|warehouse|godown|office space|shop space|hotel building|resort property|cafe premises|restaurant premises|industrial shed|commercial unit|residential unit|real estate)\\b/i.test(allText);
-  const unrelatedProduct = /\\b(pharma|pharmaceuticals?|medicines?|cosmetics?|beauty products?|chemical products?|chemicals?|software products?|gadgets?|laptops?|phones for sale|electronics|technology products?|tech products?|crypto|stocks for sale|fertilizers?|pesticides?|supplements?)\\b/i.test(allText);
+    /\b(house|home|bungalow|villa|flat|apartment|building|land|plot|farmhouse|warehouse|godown|office space|shop space|hotel building|resort property|cafe premises|restaurant premises|industrial shed|commercial unit|residential unit|real estate)\b/i.test(allText);
+  const unrelatedProduct = /\b(pharma|pharmaceuticals?|medicines?|cosmetics?|beauty products?|chemical products?|chemicals?|software products?|gadgets?|laptops?|phones for sale|electronics|technology products?|tech products?|crypto|stocks for sale|fertilizers?|pesticides?|supplements?)\b/i.test(allText);
   return propertyAnchor && (!unrelatedProduct || explicitAsset);
 }
 
