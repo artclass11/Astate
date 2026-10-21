@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node mcp-server.mjs",
-    "check": "node --check mcp-server.mjs"
+    "check": "node --check mcp-server.mjs && node --check assets/app.js",
+    "test": "node tests/matcher.test.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
