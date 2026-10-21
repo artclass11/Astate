@@ -165,7 +165,7 @@
     if (/residential|flat|apartment|house|bungalow|villa|row house|townhouse|penthouse/.test(t)) return 'Residential';
     if (/building|complex|tower|society|premises/.test(t)) return 'Building';
     // A bare acreage statement signals land, but does not prove agricultural classification.
-    if (/\\b[0-9]+(?:[.][0-9]+)?\\s*(?:acres?|hectares?|ha|gunthas?|guntas?)\\b/.test(t)) return 'Plot / land';
+    if (/\b[0-9]+(?:[.][0-9]+)?\s*(?:acres?|hectares?|ha|gunthas?|guntas?)\b/.test(t)) return 'Plot / land';
     if (/plot|land parcel|land|estate/.test(t)) return 'Plot / land';
     return '';
   }
