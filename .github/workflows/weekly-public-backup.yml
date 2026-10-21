@@ -29,6 +29,14 @@ jobs:
       - name: Export the active Supabase public feed with safe-field allowlist
         run: node scripts/export-public-listings.mjs
 
+      - name: Retain public backup snapshot for 30 days
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: astate-weekly-public-backup-${{ github.run_id }}
+          path: backups/public-listings.*
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Email JSON and CSV (only when SMTP secrets are configured)
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
