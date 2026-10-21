@@ -28,14 +28,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install pinned project dependencies
+      - name: Install project dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Run syntax checks
         run: npm run check
       - name: Run regression tests
         run: npm test
       - name: Check public website and gateway
-        id: health
         run: node scripts/site-health-check.mjs
       - name: Open or update incident issue when a check fails
         if: failure() && github.event_name != 'pull_request'
@@ -46,11 +45,7 @@ jobs:
         shell: bash
         run: |
           title="Astate daily health check failure"
-          body="Automated daily checks failed. Review the run and its logs: ${RUN_URL}
-
-Commit: ${RUN_SHA}
-
-This workflow reports failures; it does not make unattended production code changes."
+          body="Automated daily checks failed. Review run: ${RUN_URL}. Commit: ${RUN_SHA}. This workflow reports failures; it does not make unattended production code changes."
           existing="$(gh issue list --state open --search "${title} in:title" --json number --jq '.[0].number // empty')"
           if [ -n "${existing}" ]; then
             gh issue comment "${existing}" --body "${body}"
