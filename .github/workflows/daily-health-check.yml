@@ -1,6 +1,10 @@
 name: Astate daily health and maintenance check
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   schedule:
     - cron: "0 0 * * *" # 05:30 Asia/Kolkata
   workflow_dispatch:
