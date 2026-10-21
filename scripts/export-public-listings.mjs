@@ -112,7 +112,10 @@ async function main() {
         lastReviewed: item.lastReviewed || null
       });
     }
-    if (!result.pagingMetadata?.hasNext || items.length === 0) break;
+    const hasNext = typeof result.pagingMetadata?.hasNext === "boolean"
+      ? result.pagingMetadata.hasNext
+      : items.length === 100;
+    if (!hasNext || items.length === 0) break;
   }
   const exportedAt = new Date().toISOString();
   const safe = { schema: "urn:astate:public-listings-backup:v1", exportedAt, count: rows.length, privacy: "Public fields only. Private intake records and contact details are not included.", listings: rows };
