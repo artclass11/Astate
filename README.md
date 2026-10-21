@@ -51,7 +51,7 @@ GitHub Actions runs source syntax checks and regression tests. A separate daily 
 
 ## Weekly backup email
 
-`.github/workflows/weekly-public-backup.yml` exports the public listing feed as JSON and CSV each Sunday and emails the attachments to **artclassstudio11@gmail.com** only when these GitHub Actions secrets are configured: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` (optional: `SMTP_FROM`). Use an SMTP app password or provider credential; do not use your normal mailbox password unless the provider explicitly requires it.
+`.github/workflows/weekly-public-backup.yml` exports the public listing feed as JSON and CSV each Sunday and retains a download artifact for 30 days. It emails the attachments to **artclassstudio11@gmail.com** only when these GitHub Actions secrets are configured: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` (optional: `SMTP_FROM`). Use an SMTP app password or provider credential; do not use your normal mailbox password unless the provider explicitly requires it. The daily health workflow also saves a public-only snapshot for 30 days.
 
 **The workflow currently backs up public listing fields only. It does not read or back up the restricted `propertyIntakes` collection.** The private data backup needs a renewable admin credential and a private backup destination; that is not enabled by this public repository-only workflow. No backup files are committed to this public repo.
 
