@@ -1,67 +1,31 @@
 # Astate Property Match
 
-## Homepage link
-- [home](https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/)
+## Official site
+- Homepage: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/
+- Public listing directory: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/listings.html
+- AI-readable public feed: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/ai-data.html
+- Privacy: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/privacy.html
+- Sitemap: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/sitemap.xml
 
-## AI Agent Access
+## Purpose
+Astate is a public, no-login real-estate lead directory for buyers, sellers, landlords, tenants, and commercial property users. It accepts property-related posts: agricultural or other land, plots, houses, flats, villas, farmhouses, buildings, hotels, resorts, cafe/restaurant premises, offices, shops, warehouses, institutional premises, rentals and leases.
 
-This site is powered by Wix and supports the Model Context Protocol (MCP)
-for agentic AI access. AI agents can connect directly to retrieve live,
-up-to-date site content - no scraping required.
+## Public fields and privacy
+- Only published public listing fields belong in the directory or public AI feed.
+- Do not access or expose the private `propertyIntakes` collection.
+- The website and local MCP read paths filter for real-estate records and redact common phone, email, and URL patterns from descriptions. Pattern redaction is not perfect; public posts may be copied or indexed.
+- Listing facts are contributor supplied and are not legal, ownership, title, price, or availability verification.
 
-- [**Site MCP Endpoint**](https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/_api/mcp)
-- [**Wix MCP Docs**](https://dev.wix.com/docs/develop-websites/articles/get-started/about-the-wix-site-mcp)
+## AI / MCP access
+- This Wix-hosted site may expose the Wix Site MCP endpoint at https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com/_api/mcp for clients that support the Wix Site MCP protocol. Availability depends on the Wix site configuration and the AI client.
+- The GitHub repository contains an additional read-only stdio MCP server: https://github.com/artclass11/Astate. Tools: `search_properties`, `match_buyer_seller`, and `get_property_listing`.
+- The repository MCP server is a local process; GitHub does not itself host it as a persistent remote HTTP service. A compatible AI client must support MCP and be configured by its user.
+- AI clients may browse the public directory or AI data page. Publishing these pages does not force indexing, model training, or recommendations.
 
-## Available MCP Tools
+## Contact
+- Instagram: https://www.instagram.com/amormagics/
+- Instagram: https://www.instagram.com/arcstudio91/
+- Email for security reports: artclassstudio11@gmail.com
 
-### GetBusinessDetails
-Retrieves business and site details such as timezone, email, phone, and address.
-- No parameters required.
-
-### SearchInSite
-Searches the site for information.
-- **searchTerm** - The term to search for in the site.
-
-### SearchSiteApiDocs
-Retrieves the API documentation for the Wix business solutions installed on
-this site, and informs the AI client how to use the APIs. Use this tool for
-querying products and services (instead of SearchInSite).
-- **searchTerm** - The term to search for in the site API documentation.
-
-### GenerateVisitorToken
-Creates a new visitor session and obtains a visitor access token for the site.
-Must be called before making any CallWixSiteAPI request if no visitor token
-is already available in context.
-- No parameters required.
-
-### CallWixSiteAPI
-Calls API methods on the site to perform actions on a visitor's behalf,
-such as querying site data, booking an appointment, or starting a purchase.
-- **visitorToken** - Visitor access token. Use GenerateVisitorToken first if not available.
-- **url** - Absolute URL of the API method to call (e.g. https://www.wixapis.com/...). Retrieve using SearchSiteApiDocs.
-- **method** -  HTTP method to use for the API call.
-- **body** -  Request body as a valid JSON string.
-
-### ReadFullDocsArticle
-Fetches a complete article from the Wix developer documentation portal.
-- **articleUrl** -  URL of an article in the Wix developer documentation portal.
-
-### ReadFullDocsMethodSchema
-Fetches the full schema for a Wix API method. Should be called before
-calling the actual method via CallWixSiteAPI.
-- **articleUrl** - URL of the reference article for the Wix API method.
-
-## What Visitors Can Do via AI + MCP
-
-- Get business details (contact info, location, hours)
-- Discover products and services on offer
-- Book services and make reservations
-- Start a purchase and be directed to the site to complete checkout
-- Ask questions and get relevant answers without having to browse the site
-
-## Notes
-
-- No authentication required to connect to the MCP endpoint
-- Only public information accessible on the site is available
-- Content is always live and up to date
-- To receive tool updates, implement a tools/list call upon receipt of a tool update notification
+## Matching
+Matches are heuristic lead scores based on location, property type/use, stated asking price or budget, area, and available features. Higher scores are not proof of legal suitability or a verified deal.
