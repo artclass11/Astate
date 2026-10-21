@@ -3,9 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 const SITE_URL = process.env.ASTATE_SITE_URL || "https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com";
-const API_BASE = "https://www.wixapis.com";
-const CLIENT_ID = process.env.ASTATE_WIX_CLIENT_ID || "96489451-651f-4da0-b2fc-2f6047202f23";
-let tokenCache = { value: "", expiresAt: 0 };
+const SUPABASE_URL = process.env.ASTATE_SUPABASE_URL || "https://qebuxmnvgkksueikhxya.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = process.env.ASTATE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_Gmm2akNrvAWGR_LNXLFwsQ_Rn3EMKEk";
 let listingCache = { value: null, expiresAt: 0 };
 
 const server = new McpServer({
@@ -128,51 +127,26 @@ function cityFrom(text) {
   return cities.find(city => t.includes(norm(city))) || "";
 }
 
-async function getToken() {
-  if (tokenCache.value && Date.now() < tokenCache.expiresAt) return tokenCache.value;
-  const response = await fetchWithTimeout(API_BASE + "/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clientId: CLIENT_ID, grantType: "anonymous" }),
-  }, 12000);
-  if (!response.ok) throw new Error("Astate public data token request failed (" + response.status + ").");
-  const body = await response.json();
-  if (!body.access_token) throw new Error("Astate returned no public data token.");
-  tokenCache = { value: body.access_token, expiresAt: Date.now() + Math.max(60000, ((body.expires_in || 300) - 45) * 1000) };
-  return tokenCache.value;
-}
-
 async function getListings(force = false) {
   if (!force && listingCache.value && Date.now() < listingCache.expiresAt) return listingCache.value;
   const stale = listingCache.value;
   try {
-  const token = await getToken();
-  const all = [];
-  for (let offset = 0; offset < 1000; offset += 100) {
-    const response = await fetchWithTimeout(API_BASE + "/wix-data/v2/items/query", {
-      method: "POST",
-      headers: { Authorization: token, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dataCollectionId: "propertyListings",
-        query: { filter: {}, paging: { limit: 100, offset } },
-        returnTotalCount: false,
-      }),
-    }, 15000);
-    if (!response.ok) throw new Error("Astate public listing query failed (" + response.status + ").");
-    const result = await response.json();
-    const rows = Array.isArray(result.dataItems) ? result.dataItems : [];
-    for (const row of rows) {
-      const item = sanitizePublicRecord(row.data || row);
-      const status = norm(item.listingStatus || "published");
-      if (["published", "live", "active"].includes(status) && isRealEstateRecord(item)) all.push(item);
+    const response = await fetchWithTimeout(SUPABASE_URL + "/functions/v1/property-gateway", {
+      method: "GET",
+      headers: { "apikey": SUPABASE_PUBLISHABLE_KEY, "Accept": "application/json" }
+    }, 12000);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok !== true || !Array.isArray(result.listings)) {
+      throw new Error("Astate public listing gateway failed (" + response.status + "): " + (result.error || "invalid feed"));
     }
-    const hasNext = typeof result.pagingMetadata?.hasNext === "boolean" ? result.pagingMetadata.hasNext : rows.length === 100;
-    if (!hasNext || rows.length === 0) break;
-  }
-  listingCache = { value: all, expiresAt: Date.now() + 60000 };
-  return all;
+    const all = result.listings.map(sanitizePublicRecord)
+      .filter(item => {
+        const status = norm(item.listingStatus || "published");
+        return ["published", "live", "active"].includes(status) && isRealEstateRecord(item);
+      });
+    listingCache = { value: all, expiresAt: Date.now() + 60000 };
+    return all;
   } catch (error) {
-    // Search can continue during a temporary Wix outage using the most recent successful snapshot.
     if (Array.isArray(stale) && stale.length > 0) return stale;
     throw error;
   }
