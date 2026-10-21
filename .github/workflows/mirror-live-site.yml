@@ -1,0 +1,52 @@
+name: Mirror live Astate source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/mirror-live-site.yml"
+  schedule:
+    # Weekly Sunday 02:00 IST (Saturday 20:30 UTC; GitHub may start scheduled jobs later).
+    - cron: "30 20 * * 6"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: astate-live-source-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Mirror published public website files
+        env:
+          BASE_URL: https://headless-jcrzxssmnuf-myastate-1408.wix-site-host.com
+        run: |
+          set -euo pipefail
+          files=(
+            index.html listings.html submit.html ai-data.html privacy.html
+            llms.txt robots.txt sitemap.xml
+            assets/app.js assets/config.js assets/site.css
+          )
+          for file in "${files[@]}"; do
+            mkdir -p "$(dirname "$file")"
+            curl --fail --silent --show-error --location --retry 3 --retry-delay 2 "$BASE_URL/$file" -o "$file"
+            test -s "$file"
+          done
+          echo "Synced public Wix frontend source at $(date -u +'%Y-%m-%dT%H:%M:%SZ')" > SOURCE-SYNC.txt
+      - name: Commit only if files changed
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html listings.html submit.html ai-data.html privacy.html llms.txt robots.txt sitemap.xml assets/app.js assets/config.js assets/site.css SOURCE-SYNC.txt
+          if git diff --cached --quiet; then
+            echo "No source changes."
+          else
+            git commit -m "chore: mirror live Astate frontend"
+            git push
+          fi
