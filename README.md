@@ -6,7 +6,7 @@ Astate is a public, text-first real-estate marketplace and buyer/seller lead mat
 
 ## Architecture
 
-- **Live hosting / primary CMS:** Wix Headless and Wix CMS.
+- **Live hosting:** Wix Headless. The active listing database and server-side posting gateway are in Supabase; the legacy Wix CMS collections are restricted to editors.
 - **Public feed:** Supabase `public.property_listings` contains published, allowlisted property facts; its RLS policy permits public reads only.
 - **Restricted intake copy:** Supabase `private.property_submissions` stores the raw submitted message and a keyed IP fingerprint; the private schema is not exposed through the public Data API.
 - **Web client:** static HTML/CSS/JavaScript in the root and `assets/`.
