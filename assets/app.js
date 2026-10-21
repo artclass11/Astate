@@ -3,7 +3,6 @@
   const cfg = window.ASTATE_CONFIG || {};
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-  let cachedToken = null;
   let listingsCache = null;
 
   function escapeHtml(value) {
@@ -46,42 +45,22 @@
     const summary = redactPublicContacts(item.description || item.landUse || 'Details available in the listing record.');
     return `<article class="listing-card"><div class="listing-card-top"><span class="pill ${item.listingType === 'BUY' ? 'pill-buy' : ''}">${escapeHtml(prettyType(item))}</span><span class="listing-ref">${escapeHtml(ref)}</span></div><h3>${escapeHtml(item.title || `${item.propertyType || 'Property'} in ${item.city || 'Maharashtra'}`)}</h3><div class="listing-place">⌖ ${escapeHtml(place || 'Location not specified')}</div><div class="listing-facts"><span><small>TYPE</small>${escapeHtml(item.propertyType || 'Not stated')}</span><span><small>AREA</small>${escapeHtml(areaLabel(item))}</span></div><div class="listing-price">${escapeHtml(price)}</div><p class="listing-description">${escapeHtml(summary)}</p>${item.roadAccess ? `<div class="listing-extra">Access: ${escapeHtml(item.roadAccess)}</div>` : ''}<div class="listing-card-bottom"><span>Public community listing</span><span class="contact-links"><a href="https://www.instagram.com/amormagics/" target="_blank" rel="noopener" aria-label="Ask about reference ${escapeHtml(ref)} via amormagics">@amormagics ↗</a><a href="https://www.instagram.com/arcstudio91/" target="_blank" rel="noopener" aria-label="Ask about reference ${escapeHtml(ref)} via arcstudio91">@arcstudio91 ↗</a></span></div></article>`;
   }
-  async function getToken() {
-    if (cachedToken) return cachedToken;
-    const res = await fetchWithTimeout(`${cfg.apiBase}/oauth2/token`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({clientId:cfg.wixClientId, grantType:'anonymous'})}, 12000);
-    if (!res.ok) throw new Error(`Secure data connection could not start (${res.status}).`);
-    const json = await res.json();
-    if (!json.access_token) throw new Error('No visitor access token was returned.');
-    cachedToken = json.access_token;
-    return cachedToken;
-  }
-  async function apiPost(path, body) {
-    const token = await getToken();
-    const res = await fetchWithTimeout(`${cfg.apiBase}${path}`, {method:'POST', headers:{'Authorization':token,'Content-Type':'application/json'}, body:JSON.stringify(body)}, 15000);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = json?.message || json?.details?.applicationError?.description || `Wix request failed (${res.status}).`;
-      throw new Error(msg);
-    }
-    return json;
-  }
   async function fetchListings(force = false) {
     if (listingsCache && !force) return listingsCache;
-    const all = [];
-    for (let offset = 0; offset < 1000; offset += 100) {
-      const response = await apiPost('/wix-data/v2/items/query', {dataCollectionId:cfg.publicCollection, query:{filter:{}, paging:{limit:100, offset}}, returnTotalCount:false});
-      const rows = Array.isArray(response.dataItems) ? response.dataItems : [];
-      for (const row of rows) {
-        const item = sanitizePublicRecord(row.data || row);
-        const status = normalize(item.listingStatus || 'published');
-        if ((status === 'published' || status === 'live' || status === 'active') && validateRealEstateRecord(item)) all.push(item);
-      }
-      const meta = response.pagingMetadata || {};
-      const next = typeof meta.hasNext === 'boolean' ? meta.hasNext : rows.length === 100;
-      if (!next || rows.length === 0) break;
+    if (!cfg.supabaseUrl || !cfg.supabasePublishableKey) throw new Error('The public listing gateway is not configured.');
+    const response = await fetchWithTimeout(cfg.supabaseUrl + '/functions/v1/property-gateway', {
+      method: 'GET',
+      headers: { 'apikey': cfg.supabasePublishableKey, 'Accept': 'application/json' }
+    }, 12000);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok !== true || !Array.isArray(result.listings)) {
+      throw new Error(result.error || 'The public listing service is temporarily unavailable.');
     }
-    listingsCache = all;
-    return all;
+    listingsCache = result.listings.map(sanitizePublicRecord).filter(item => {
+      const status = normalize(item.listingStatus || 'published');
+      return (status === 'published' || status === 'live' || status === 'active') && validateRealEstateRecord(item);
+    });
+    return listingsCache;
   }
   function setListingError(target, message) {
     if (target) target.innerHTML = `<div class="empty-card"><span class="empty-mark">!</span><h3>Data isn't available right now.</h3><p>${escapeHtml(message)}</p><p class="micro-copy">Please retry, or contact <a href="https://www.instagram.com/amormagics/" target="_blank" rel="noopener">@amormagics</a> or <a href="https://www.instagram.com/arcstudio91/" target="_blank" rel="noopener">@arcstudio91</a>.</p></div>`;
@@ -511,100 +490,27 @@
     container.insertAdjacentHTML('beforeend', '<div class="bubble user">' + escapeHtml(text) + '</div>');
     const thinking = document.createElement('div');
     thinking.className = 'bubble assistant';
-    thinking.textContent = 'Publishing your property post…';
+    thinking.textContent = 'Checking and publishing your property post…';
     container.appendChild(thinking);
     container.scrollTop = container.scrollHeight;
     try {
-      const intent = detectIntent(text);
-      const city = inferCity(text) || cityForLocality(inferLocality(text));
-      const locality = inferLocality(text);
-      const state = inferState(text) || (city || locality ? 'Maharashtra' : '');
-      const propertyType = inferType(text) || 'Other real estate';
-      const amount = parseAmount(text);
-      const area = parseArea(text);
-      const phoneMatch = text.match(/(?:\+?91[\s-]*)?([6-9]\d{9})/);
-      const referenceId = 'AS-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-      const safeDescription = redactPublicContacts(text).slice(0, 1800) || 'Real-estate details supplied by the contributor.';
-      // Public collection stores only property facts. Personal phone/email/web links are redacted by default.
-      const publicPayload = {
-        publicId: referenceId,
-        slug: referenceId.toLowerCase(),
-        title: cleanListingTitle(intent, propertyType, city, locality),
-        listingType: intent,
-        propertyType: propertyType,
-        city: city || '',
-        locality: locality || '',
-        district: city || '',
-        state: state,
-        areaValue: area ? area.value : undefined,
-        areaUnit: area ? area.unit : undefined,
-        priceINR: intent === 'SELL' ? amount : undefined,
-        budgetMaxINR: intent === 'BUY' ? amount : undefined,
-        landUse: inferUse(text) || '',
-        description: safeDescription,
-        contactMethod: 'Instagram',
-        contactPublic: '@amormagics · @arcstudio91',
-        contactConsent: false,
-        listingStatus: 'PUBLISHED',
-        source: 'Astate community post'
-      };
-      Object.keys(publicPayload).forEach(key => { if (publicPayload[key] === undefined || publicPayload[key] === '') delete publicPayload[key]; });
-
-      // Avoid repeat submissions on double-click/retry by checking for an exact recent public text duplicate.
-      try {
-        const current = await fetchListings(true);
-        const normalizedPost = normalize(safeDescription);
-        const duplicate = current.find(item => normalize(item.description || '') === normalizedPost && normalize(item.listingType || '') === normalize(intent) && normalize(item.city || '') === normalize(city));
-        if (duplicate) {
-          thinking.textContent = 'This same property message already appears in the public feed as ' + (duplicate.publicId || duplicate.slug || 'an existing listing') + '. I did not create a duplicate.';
-          return;
-        }
-      } catch (_) { /* Publishing is still attempted; query outages must not block a valid post. */ }
-
-      const result = await apiPost('/wix-data/v2/bulk/items/insert', {
-        dataCollectionId: cfg.publicCollection,
-        dataItems: [{ data: publicPayload }],
-        returnEntity: true
-      });
-      const failed = Number(result && result.bulkActionMetadata && result.bulkActionMetadata.totalFailures || 0);
-      if (failed > 0) throw new Error('The public listing collection rejected this post.');
-
-      // Keep an administrator-only raw intake copy for backup/support where permissions allow it.
-      let privateSaved = false;
-      try {
-        const privatePayload = {
-          referenceId: referenceId,
-          intent: intent,
-          propertyType: propertyType,
-          city: city || '',
-          district: city || '',
-          state: state,
-          areaValue: area ? area.value : undefined,
-          areaUnit: area ? area.unit : undefined,
-          priceINR: intent === 'SELL' ? amount : undefined,
-          budgetMaxINR: intent === 'BUY' ? amount : undefined,
-          description: text,
-          contactWhatsApp: phoneMatch ? '+91 ' + phoneMatch[1] : undefined,
-          preferredContact: phoneMatch ? 'WhatsApp' : 'Instagram',
-          consentPublic: true,
-          consentContact: false,
-          reviewStatus: 'AUTO_PUBLISHED',
-          submittedAt: { '$date': new Date().toISOString() }
-        };
-        Object.keys(privatePayload).forEach(key => { if (privatePayload[key] === undefined || privatePayload[key] === '') delete privatePayload[key]; });
-        const privateResult = await apiPost('/wix-data/v2/bulk/items/insert', {
-          dataCollectionId: cfg.intakeCollection,
-          dataItems: [{ data: privatePayload }],
-          returnEntity: true
-        });
-        privateSaved = Number(privateResult && privateResult.bulkActionMetadata && privateResult.bulkActionMetadata.totalFailures || 0) === 0;
-      } catch (_) { privateSaved = false; }
+      const response = await fetchWithTimeout(cfg.supabaseUrl + '/functions/v1/property-gateway', {
+        method: 'POST',
+        headers: { 'apikey': cfg.supabasePublishableKey, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ message: text, honeypot: '' })
+      }, 18000);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok !== true || !result.publicId) {
+        throw new Error(result.error || 'The property could not be published. Please retry.');
+      }
       listingsCache = null;
-      thinking.textContent = 'Published now. Reference: ' + referenceId + '. Property details are live in Astate. Phone numbers, emails and URLs are hidden from the public description. ' + (privateSaved ? 'A private copy was also saved.' : 'The public post is live; the private backup copy could not be confirmed.') + ' Public posts can be copied by search engines or other visitors. For edits or removal, contact @amormagics or @arcstudio91.';
+      thinking.textContent = 'Published now. Reference: ' + result.publicId + '. The server checked the property category, removed common contact patterns from the public text and applied duplicate/rate checks. Public posts can be copied by search engines or other visitors.';
       const results = $('#chatResults');
       if (results) results.innerHTML = '<a class="button button-primary" href="listings.html">See published listing ↗</a>';
+      const refresh = await fetchListings(true).catch(() => null);
+      if (refresh) renderHomeListings(refresh);
     } catch (error) {
-      thinking.textContent = 'The site could not publish this property post just now. Please retry. If the issue continues, contact @amormagics or @arcstudio91 on Instagram.';
+      thinking.textContent = error && error.message ? error.message : 'The listing service is temporarily unavailable. Please retry.';
     } finally {
       if (button) button.disabled = false;
       container.scrollTop = container.scrollHeight;
