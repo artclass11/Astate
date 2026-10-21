@@ -21,6 +21,31 @@ function norm(value) {
     .trim();
 }
 
+function redactPublicContacts(text) {
+  return String(text || "")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email hidden]")
+    .replace(/https?:\\/\\/\\S+/gi, "[link hidden]")
+    .replace(/(?:\\+?91[\\s-]*)?[6-9]\\d{4}[\\s-]?\\d{5}/g, "[phone hidden]")
+    .replace(/\\bwhatsapp\\s*(?:me|at|on|number)?\\s*[:=-]?\\s*\\d[\\d\\s-]{7,}/gi, "WhatsApp [contact hidden]")
+    .replace(/\\b(?:call|phone|mobile|contact)\\s*(?:me|at|on)?\\s*[:=-]?\\s*\\d[\\d\\s-]{7,}/gi, "[contact hidden]")
+    .replace(/[ \\t]{2,}/g, " ").trim();
+}
+
+function isRealEstateRecord(item) {
+  const type = norm(item?.listingType).toUpperCase();
+  if (type !== "BUY" && type !== "SELL") return false;
+  const allText = [item?.title, item?.propertyType, item?.landUse, item?.description].filter(Boolean).join(" ");
+  const propertyAnchor = /\\b(real estate|property|properties|land|plot|plots|acre|acres|hectare|guntha|guntas|house|home|bungalow|villa|flat|apartment|building|complex|tower|farmhouse|farm house|farm land|farmland|agricultural land|warehouse|godown|industrial shed|industrial property|commercial property|office space|office building|shop|showroom|retail space|hotel|resort|motel|lodge|guest house|guesthouse|cafe|café|restaurant|food court|school building|college building|hospital building|clinic building|mall|business park|factory building|residential|commercial|industrial|institutional|premises|realty|housing society|row house|townhouse|penthouse|hostel|pg accommodation|parking space|rental property|lease property|property for rent|shop for rent|office for rent|to let)\\b/i.test(allText);
+  const explicitAsset = Boolean(propertyFamily([item?.propertyType, item?.landUse].filter(Boolean).join(" "))) ||
+    /\\b(house|home|bungalow|villa|flat|apartment|building|land|plot|farmhouse|warehouse|godown|office space|shop space|hotel building|resort property|cafe premises|restaurant premises|industrial shed|commercial unit|residential unit|real estate)\\b/i.test(allText);
+  const unrelatedProduct = /\\b(pharma|pharmaceuticals?|medicines?|cosmetics?|beauty products?|chemical products?|chemicals?|software products?|gadgets?|laptops?|phones for sale|electronics|technology products?|tech products?|crypto|stocks for sale|fertilizers?|pesticides?|supplements?)\\b/i.test(allText);
+  return propertyAnchor && (!unrelatedProduct || explicitAsset);
+}
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+}
+
 function parseAmount(text) {
   const t = norm(text).replace(/,/g, "");
   let m = t.match(/(?:₹|rs\.?\s*)\s*([0-9]+(?:\.[0-9]+)?)\s*(crores?|cr|lakhs?|lacs?|lac|l|thousand|k)?\b/i);
@@ -88,11 +113,11 @@ function cityFrom(text) {
 
 async function getToken() {
   if (tokenCache.value && Date.now() < tokenCache.expiresAt) return tokenCache.value;
-  const response = await fetch(API_BASE + "/oauth2/token", {
+  const response = await fetchWithTimeout(API_BASE + "/oauth2/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ clientId: CLIENT_ID, grantType: "anonymous" }),
-  });
+  }, 12000);
   if (!response.ok) throw new Error("Astate public data token request failed (" + response.status + ").");
   const body = await response.json();
   if (!body.access_token) throw new Error("Astate returned no public data token.");
@@ -102,10 +127,12 @@ async function getToken() {
 
 async function getListings(force = false) {
   if (!force && listingCache.value && Date.now() < listingCache.expiresAt) return listingCache.value;
+  const stale = listingCache.value;
+  try {
   const token = await getToken();
   const all = [];
   for (let offset = 0; offset < 1000; offset += 100) {
-    const response = await fetch(API_BASE + "/wix-data/v2/items/query", {
+    const response = await fetchWithTimeout(API_BASE + "/wix-data/v2/items/query", {
       method: "POST",
       headers: { Authorization: token, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -113,20 +140,25 @@ async function getListings(force = false) {
         query: { filter: {}, paging: { limit: 100, offset } },
         returnTotalCount: false,
       }),
-    });
+    }, 15000);
     if (!response.ok) throw new Error("Astate public listing query failed (" + response.status + ").");
     const result = await response.json();
     const rows = Array.isArray(result.dataItems) ? result.dataItems : [];
     for (const row of rows) {
       const item = row.data || row;
       const status = norm(item.listingStatus || "published");
-      if (["published", "live", "active"].includes(status)) all.push(item);
+      if (["published", "live", "active"].includes(status) && isRealEstateRecord(item)) all.push(item);
     }
     const hasNext = typeof result.pagingMetadata?.hasNext === "boolean" ? result.pagingMetadata.hasNext : rows.length === 100;
     if (!hasNext || rows.length === 0) break;
   }
   listingCache = { value: all, expiresAt: Date.now() + 60000 };
   return all;
+  } catch (error) {
+    // Search can continue during a temporary Wix outage using the most recent successful snapshot.
+    if (Array.isArray(stale) && stale.length > 0) return stale;
+    throw error;
+  }
 }
 
 function textOverlap(query, item) {
@@ -227,7 +259,7 @@ function matchScore(query, item) {
     budgetMaxINR: item.budgetMaxINR ?? null,
     reasons: reasons.slice(0, 4),
     caveats: caveats.slice(0, 3),
-    description: item.description || "",
+    description: redactPublicContacts(item.description || ""),
   };
 }
 
@@ -255,7 +287,7 @@ server.tool(
           area: row.item.areaValue ? String(row.item.areaValue) + " " + (row.item.areaUnit || "") : "Not stated",
           priceINR: row.item.priceINR ?? null,
           budgetMaxINR: row.item.budgetMaxINR ?? null,
-          description: row.item.description || "",
+          description: redactPublicContacts(row.item.description || ""),
           textOverlap: Math.round(row.overlap * 100),
         }));
       return { content: [{ type: "text", text: JSON.stringify({ count: ranked.length, source: SITE_URL + "/listings.html", results: ranked }, null, 2) }] };
@@ -317,7 +349,7 @@ server.tool(
         budgetMaxINR: item.budgetMaxINR ?? null,
         landUse: item.landUse || "",
         roadAccess: item.roadAccess || "",
-        description: item.description || "",
+        description: redactPublicContacts(item.description || ""),
         source: item.source || "Astate public listing",
       };
       return { content: [{ type: "text", text: JSON.stringify(safe, null, 2) }] };
