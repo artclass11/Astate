@@ -34,8 +34,15 @@ jobs:
         run: npm run check
       - name: Run regression tests
         run: npm test
-      - name: Smoke-test public JSON/CSV backup export
+      - name: Export sanitized public JSON/CSV backup
         run: npm run backup:public
+      - name: Retain public backup snapshot for 30 days
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: astate-public-backup-${{ github.run_id }}
+          path: backups/public-listings.*
+          if-no-files-found: error
+          retention-days: 30
       - name: Check public website and gateway
         run: node scripts/site-health-check.mjs
       - name: Open or update incident issue when a check fails
