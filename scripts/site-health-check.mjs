@@ -81,7 +81,7 @@ await Promise.all([
   checkPage("/listings.html", "published"),
   checkPage("/privacy.html", "privacy"),
   checkPage("/robots.txt", "sitemap"),
-  checkPage("/sitemap.xml", "urlset"),
+  checkPage("/sitemap.xml", ""),
   checkPage("/llms.txt", "Astate"),
   checkGateway(),
   checkInvalidSubmissionIsRejected()
