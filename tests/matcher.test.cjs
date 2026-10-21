@@ -5,7 +5,7 @@ const appPath = require('node:path').join(__dirname, '..', 'assets', 'app.js');
 let source = fs.readFileSync(appPath, 'utf8');
 const marker = "  document.addEventListener('DOMContentLoaded', () => {";
 assert(source.includes(marker), 'test hook marker not found');
-source = source.replace(marker, "  window.__ASTATE_TEST_API = { validateRealEstateMessage, validateRealEstateRecord, redactPublicContacts, inferType, detectIntent, queryProfile, scoreMatch };\n" + marker);
+source = source.replace(marker, "  window.__ASTATE_TEST_API = { validateRealEstateMessage, validateRealEstateRecord, sanitizePublicRecord, redactPublicContacts, inferType, detectIntent, queryProfile, scoreMatch };\n" + marker);
 const window = { ASTATE_CONFIG: {} };
 const document = { addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, body: { dataset: { page: '' } } };
 vm.runInNewContext(source, { window, document, console, URL, Blob, setTimeout, clearTimeout });
@@ -48,6 +48,25 @@ assert.equal(api.validateRealEstateRecord({
   propertyType: 'Hotel / resort',
   description: 'Selling a hotel building with 18 rooms near Nashik'
 }), true, 'real-estate asset types beyond land/houses must be accepted');
+const unsafeRecord = api.sanitizePublicRecord({
+  publicId: 'AS-TEST',
+  listingType: 'SELL',
+  propertyType: 'Commercial',
+  title: 'Commercial property, call 9876543210',
+  city: 'Pune owner@example.com',
+  locality: 'Near https://example.com',
+  description: 'Selling a commercial unit. WhatsApp 9876543210',
+  contactWhatsApp: '+91 9876543210',
+  privateNotes: 'Do not return this',
+  priceINR: '4500000'
+});
+const sanitizedJson = JSON.stringify(unsafeRecord);
+assert(!sanitizedJson.includes('9876543210'), 'all public text fields must redact phone numbers');
+assert(!sanitizedJson.includes('owner@example.com'), 'all public text fields must redact emails');
+assert(!sanitizedJson.includes('https://example.com'), 'all public text fields must redact URLs');
+assert(!sanitizedJson.includes('privateNotes') && !sanitizedJson.includes('contactWhatsApp'), 'unknown/private CMS fields must not survive public sanitization');
+assert.equal(unsafeRecord.priceINR, 4500000, 'numeric fields should retain their normalized data');
+
 assert.equal(api.validateRealEstateRecord({
   listingType: 'SELL',
   title: 'Pharma products',
